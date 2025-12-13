@@ -3,23 +3,50 @@
 <head>
   <meta charset="UTF-8" />
   <title>3D 手势控制粒子圣诞树</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #05080f;
-      font-family: sans-serif;
-    }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #05080f; font-family: sans-serif; }
     #upload {
       position: fixed;
       top: 12px;
       left: 12px;
       z-index: 10;
-      color: white;
+      color: #fff;
+      user-select: none;
+      font-size: 14px;
+      line-height: 1.35;
+      background: rgba(0,0,0,0.25);
+      padding: 10px 12px;
+      border-radius: 10px;
+      backdrop-filter: blur(6px);
     }
-    #upload input {
-      margin-top: 4px;
+    #upload input { margin-top: 6px; }
+    #hint {
+      position: fixed;
+      bottom: 12px;
+      left: 12px;
+      z-index: 10;
+      color: rgba(255,255,255,0.85);
+      font-size: 12px;
+      background: rgba(0,0,0,0.25);
+      padding: 8px 10px;
+      border-radius: 10px;
+      backdrop-filter: blur(6px);
+      max-width: 360px;
+    }
+    #err {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 20;
+      color: #ffd7d7;
+      font-size: 12px;
+      background: rgba(80,0,0,0.45);
+      padding: 10px 12px;
+      border-radius: 10px;
+      max-width: 420px;
+      white-space: pre-wrap;
+      display: none;
     }
   </style>
 </head>
@@ -29,17 +56,42 @@
   📸 上传照片（作为树上装饰）
   <br />
   <input type="file" id="fileInput" multiple accept="image/*" />
+  <div style="margin-top:6px;opacity:.8">
+    也支持预置图片：<code>./assets/1.jpg</code> 等
+  </div>
 </div>
 
+<div id="hint">
+  ✅ 操作提示：允许摄像头后<br/>
+  👉 食指指向：选中照片（hover）<br/>
+  🤏 拇指+食指捏合：放大选中照片（捏合越紧放大越大）<br/>
+  🤏 持续捏合 300ms：进入详情模式（居中显示）<br/>
+  松开捏合 / 无手：自动退出
+</div>
+
+<div id="err"></div>
 <video id="video" style="display:none;"></video>
 
 <script type="module">
 /* ======================================================
- *  依赖引入
+ *  依赖引入（改为 unpkg，国内一般更稳）
  * ====================================================== */
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { Hands } from "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js";
-import { Camera } from "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js";
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import { Hands } from "https://unpkg.com/@mediapipe/hands/hands.js";
+import { Camera } from "https://unpkg.com/@mediapipe/camera_utils/camera_utils.js";
+
+/* ======================================================
+ *  错误显示（避免黑屏无提示）
+ * ====================================================== */
+const errBox = document.getElementById("err");
+window.addEventListener("error", (e) => {
+  errBox.style.display = "block";
+  errBox.textContent = "❌ 运行报错：\n" + (e?.message || e);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  errBox.style.display = "block";
+  errBox.textContent = "❌ Promise 报错：\n" + (e?.reason?.message || e?.reason || e);
+});
 
 /* ======================================================
  *  全局参数（可调）
@@ -47,113 +99,183 @@ import { Camera } from "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/cam
 const PARAMS = {
   TREE_HEIGHT: 6,
   TREE_RADIUS: 3,
-  PARTICLE_COUNT: 4000,
+  PARTICLE_COUNT: 4500,
+
   PINCH_MIN: 0.02,
   PINCH_MAX: 0.12,
-  DETAIL_HOLD_MS: 300
+  DETAIL_HOLD_MS: 300,
+
+  NO_HAND_TIMEOUT_MS: 1200,   // 无手多久回到默认
+  ROTATE_SPEED: 0.002,
 };
 
 /* ======================================================
  *  Three.js 基础场景
  * ====================================================== */
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x05080f, 8, 20);
+scene.fog = new THREE.Fog(0x05080f, 8, 22);
 
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  100
-);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(0, 3, 10);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
+/* 柔光背景（可选） */
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+
 /* ======================================================
- *  粒子圣诞树系统
+ *  粒子圣诞树（树形 basePositions + 当前 positions）
  * ====================================================== */
 const positions = new Float32Array(PARAMS.PARTICLE_COUNT * 3);
 const basePositions = new Float32Array(PARAMS.PARTICLE_COUNT * 3);
+const cloudPositions = new Float32Array(PARAMS.PARTICLE_COUNT * 3); // 星云形目标
 
 for (let i = 0; i < PARAMS.PARTICLE_COUNT; i++) {
+  // 树形：锥体
   const y = Math.random() * PARAMS.TREE_HEIGHT;
   const radius = (1 - y / PARAMS.TREE_HEIGHT) * PARAMS.TREE_RADIUS;
   const angle = Math.random() * Math.PI * 2;
-
   const x = Math.cos(angle) * radius;
   const z = Math.sin(angle) * radius;
 
   positions.set([x, y, z], i * 3);
   basePositions.set([x, y, z], i * 3);
+
+  // 星云：环绕球壳/云团
+  const t = Math.random() * Math.PI * 2;
+  const u = Math.random() * 2 - 1;
+  const rr = 4 + Math.random() * 4;
+  const cx = rr * Math.sqrt(1 - u*u) * Math.cos(t);
+  const cy = 2 + rr * u * 0.35;
+  const cz = rr * Math.sqrt(1 - u*u) * Math.sin(t);
+  cloudPositions.set([cx, cy, cz], i * 3);
 }
 
-const geometry = new THREE.BufferGeometry();
-geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+const geom = new THREE.BufferGeometry();
+geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 
-const material = new THREE.PointsMaterial({
+const colors = new Float32Array(PARAMS.PARTICLE_COUNT * 3);
+const cGreen = new THREE.Color("#2cff9a");
+const cGold  = new THREE.Color("#ffd27d");
+const cWhite = new THREE.Color("#ffffff");
+for (let i = 0; i < PARAMS.PARTICLE_COUNT; i++) {
+  const r = Math.random();
+  const c = r < 0.55 ? cGreen : (r < 0.85 ? cGold : cWhite);
+  colors.set([c.r, c.g, c.b], i * 3);
+}
+geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+const mat = new THREE.PointsMaterial({
   size: 0.06,
   transparent: true,
   opacity: 0.9,
   depthWrite: false,
   blending: THREE.AdditiveBlending,
-  color: new THREE.Color("#ffd27d")
+  vertexColors: true
 });
 
-const treePoints = new THREE.Points(geometry, material);
+const treePoints = new THREE.Points(geom, mat);
 scene.add(treePoints);
 
-/* 星星 */
+/* 星星（树顶） */
 const star = new THREE.Mesh(
-  new THREE.SphereGeometry(0.25, 16, 16),
+  new THREE.SphereGeometry(0.26, 18, 18),
   new THREE.MeshBasicMaterial({ color: 0xffffcc })
 );
-star.position.y = PARAMS.TREE_HEIGHT + 0.3;
+star.position.set(0, PARAMS.TREE_HEIGHT + 0.3, 0);
 scene.add(star);
 
 /* ======================================================
- *  照片系统
+ *  照片系统（预置 + 手动上传）
  * ====================================================== */
 const photoGroup = new THREE.Group();
 scene.add(photoGroup);
 const photoMeshes = [];
 
+function placePhotoMesh(mesh) {
+  // 螺旋/随机挂在树周围
+  const y = Math.random() * PARAMS.TREE_HEIGHT * 0.85 + 0.5;
+  const r = (1 - y / PARAMS.TREE_HEIGHT) * PARAMS.TREE_RADIUS + 0.6;
+  const a = Math.random() * Math.PI * 2;
+  mesh.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+  mesh.lookAt(0, y, 0);
+}
+
+function addPhotoFromTexture(texture) {
+  texture.colorSpace = THREE.SRGBColorSpace;
+
+  const geo = new THREE.PlaneGeometry(1, 1);
+  const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 1 });
+  const mesh = new THREE.Mesh(geo, mat);
+
+  placePhotoMesh(mesh);
+  photoGroup.add(mesh);
+  photoMeshes.push(mesh);
+}
+
+function addPhotoFromUrl(url) {
+  const loader = new THREE.TextureLoader();
+  loader.load(
+    url,
+    (tex) => addPhotoFromTexture(tex),
+    undefined,
+    (err) => {
+      // 预置图片不存在也没关系，给出提示
+      console.warn("预置图片加载失败：", url, err);
+    }
+  );
+}
+
+/* 预置图片（你可以在仓库 assets/ 放 1.jpg 2.jpg 3.jpg） */
+const defaultPhotos = [
+  "./assets/1.jpg",
+  "./assets/2.jpg",
+  "./assets/3.jpg"
+];
+defaultPhotos.forEach(addPhotoFromUrl);
+
+/* 用户手动上传 */
 document.getElementById("fileInput").addEventListener("change", (e) => {
-  [...e.target.files].forEach(file => {
+  const files = [...e.target.files];
+  files.forEach(file => {
     const url = URL.createObjectURL(file);
-    const texture = new THREE.TextureLoader().load(url);
-    const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
-    const geo = new THREE.PlaneGeometry(1, 1);
-    const mesh = new THREE.Mesh(geo, mat);
-
-    const y = Math.random() * PARAMS.TREE_HEIGHT * 0.8 + 0.5;
-    const r = (1 - y / PARAMS.TREE_HEIGHT) * PARAMS.TREE_RADIUS + 0.5;
-    const a = Math.random() * Math.PI * 2;
-    mesh.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
-    mesh.lookAt(0, y, 0);
-
-    photoGroup.add(mesh);
-    photoMeshes.push(mesh);
+    const loader = new THREE.TextureLoader();
+    loader.load(url, (tex) => {
+      addPhotoFromTexture(tex);
+      // 释放 blob URL（避免内存增长）
+      URL.revokeObjectURL(url);
+    });
   });
 });
 
 /* ======================================================
- *  Raycaster（食指选中）
+ *  Raycaster（食指指向 hover/选中）
  * ====================================================== */
 const raycaster = new THREE.Raycaster();
 let hoveredPhoto = null;
 
 /* ======================================================
- *  MediaPipe Hands
+ *  手势状态
  * ====================================================== */
-let lastPinchTime = 0;
+let pinchStrength = 0;      // 0~1
 let detailMode = false;
-let pinchStrength = 0;
+let lastPinchStart = 0;
 
+let handX = 0;              // 用于左右移动旋转
+let targetRotationY = 0;
+let lastHandSeenAt = 0;
+
+let mode = "TREE";          // TREE / CLOUD
+let targetCloudMix = 0;     // 0=树形，1=星云
+
+/* ======================================================
+ *  MediaPipe Hands 初始化
+ * ====================================================== */
 const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  locateFile: (file) => `https://unpkg.com/@mediapipe/hands/${file}`
 });
 
 hands.setOptions({
@@ -163,47 +285,67 @@ hands.setOptions({
   minTrackingConfidence: 0.6
 });
 
-hands.onResults(results => {
-  if (!results.multiHandLandmarks?.length) {
-    pinchStrength = 0;
-    return;
-  }
+hands.onResults((results) => {
+  const lm = results.multiHandLandmarks?.[0];
+  if (!lm) return;
 
-  const lm = results.multiHandLandmarks[0];
-  const index = lm[8];
-  const thumb = lm[4];
+  lastHandSeenAt = performance.now();
 
-  /* pinch */
-  const d = Math.hypot(index.x - thumb.x, index.y - thumb.y);
+  const indexTip = lm[8];
+  const thumbTip = lm[4];
+
+  // pinch 距离
+  const d = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
   pinchStrength = THREE.MathUtils.clamp(
     (PARAMS.PINCH_MAX - d) / (PARAMS.PINCH_MAX - PARAMS.PINCH_MIN),
     0,
     1
   );
 
-  /* Raycaster */
-  const ndc = {
-    x: index.x * 2 - 1,
-    y: -(index.y * 2 - 1)
-  };
+  // 用手的 x 控制旋转（-0.5~0.5）
+  handX = indexTip.x - 0.5;
+  targetRotationY = THREE.MathUtils.clamp(handX * 2.0, -1.2, 1.2);
+
+  // Raycaster：用 indexTip 的屏幕坐标映射 NDC
+  const ndc = { x: indexTip.x * 2 - 1, y: -(indexTip.y * 2 - 1) };
   raycaster.setFromCamera(ndc, camera);
   const hits = raycaster.intersectObjects(photoMeshes);
-
   hoveredPhoto = hits[0]?.object || null;
 
-  if (pinchStrength > 0.8) {
-    if (!lastPinchTime) lastPinchTime = performance.now();
-    if (performance.now() - lastPinchTime > PARAMS.DETAIL_HOLD_MS) {
+  // “张开/握拳”这里用一个简单的启发式：
+  // 看食指/中指/无名指/小指的指尖到掌心(0点)的距离总和
+  const palm = lm[0];
+  const tips = [lm[8], lm[12], lm[16], lm[20]];
+  const sumDist = tips.reduce((acc, p) => acc + Math.hypot(p.x - palm.x, p.y - palm.y), 0);
+
+  const OPEN_THRESHOLD = 0.55;  // 可调
+  const FIST_THRESHOLD = 0.38;  // 可调
+
+  if (sumDist > OPEN_THRESHOLD) {
+    mode = "CLOUD";   // 张开：散开
+  } else if (sumDist < FIST_THRESHOLD) {
+    mode = "TREE";    // 握拳：聚合
+  }
+  targetCloudMix = (mode === "CLOUD") ? 1 : 0;
+
+  // 详情模式：pinch 强且持续 300ms
+  if (pinchStrength > 0.8 && hoveredPhoto) {
+    if (!lastPinchStart) lastPinchStart = performance.now();
+    if (performance.now() - lastPinchStart > PARAMS.DETAIL_HOLD_MS) {
       detailMode = true;
     }
   } else {
-    lastPinchTime = 0;
+    lastPinchStart = 0;
     detailMode = false;
   }
 });
 
-const cameraMP = new Camera(document.getElementById("video"), {
-  onFrame: async () => await hands.send({ image: document.getElementById("video") }),
+/* 摄像头 */
+const video = document.getElementById("video");
+const cameraMP = new Camera(video, {
+  onFrame: async () => {
+    await hands.send({ image: video });
+  },
   width: 640,
   height: 480
 });
@@ -212,37 +354,85 @@ cameraMP.start();
 /* ======================================================
  *  动画循环
  * ====================================================== */
+const tmpV3 = new THREE.Vector3();
+let cloudMix = 0; // 当前混合值
+
 function animate() {
   requestAnimationFrame(animate);
 
-  /* 粒子呼吸 */
-  const pos = geometry.attributes.position.array;
+  const now = performance.now();
+
+  // 无手回退
+  if (now - lastHandSeenAt > PARAMS.NO_HAND_TIMEOUT_MS) {
+    pinchStrength = 0;
+    detailMode = false;
+    hoveredPhoto = null;
+    mode = "TREE";
+    targetCloudMix = 0;
+    targetRotationY = 0;
+  }
+
+  // 粒子树 <-> 星云 混合
+  cloudMix = THREE.MathUtils.lerp(cloudMix, targetCloudMix, 0.04);
+
+  // 呼吸/漂浮 + 混合目标位置
+  const pos = geom.attributes.position.array;
   for (let i = 0; i < PARAMS.PARTICLE_COUNT; i++) {
-    pos[i * 3 + 1] =
-      basePositions[i * 3 + 1] +
-      Math.sin(Date.now() * 0.001 + i) * 0.02;
+    const bi = i * 3;
+    const bx = basePositions[bi];
+    const by = basePositions[bi + 1];
+    const bz = basePositions[bi + 2];
+
+    const cx = cloudPositions[bi];
+    const cy = cloudPositions[bi + 1];
+    const cz = cloudPositions[bi + 2];
+
+    // 树形漂浮
+    const floatY = Math.sin((Date.now() * 0.001) + i) * 0.02;
+
+    const tx = THREE.MathUtils.lerp(bx, cx, cloudMix);
+    const ty = THREE.MathUtils.lerp(by + floatY, cy, cloudMix);
+    const tz = THREE.MathUtils.lerp(bz, cz, cloudMix);
+
+    pos[bi] = tx;
+    pos[bi + 1] = ty;
+    pos[bi + 2] = tz;
   }
-  geometry.attributes.position.needsUpdate = true;
+  geom.attributes.position.needsUpdate = true;
 
-  /* 照片 hover + pinch 缩放 */
-  photoMeshes.forEach(m => {
-    m.scale.lerp(
-      hoveredPhoto === m
-        ? new THREE.Vector3(1 + pinchStrength * 1.5, 1 + pinchStrength * 1.5, 1)
-        : new THREE.Vector3(1, 1, 1),
-      0.15
-    );
-    m.material.opacity = detailMode && hoveredPhoto !== m ? 0.2 : 1;
-  });
+  // 场景旋转（左右移动手）
+  treePoints.rotation.y = THREE.MathUtils.lerp(treePoints.rotation.y, targetRotationY, 0.08);
+  photoGroup.rotation.y = treePoints.rotation.y;
 
+  // 星星轻微呼吸
+  star.scale.setScalar(1 + Math.sin(Date.now() * 0.002) * 0.05);
+
+  // 照片 hover + pinch 缩放 + 详情模式淡出
+  for (const m of photoMeshes) {
+    const isHover = (hoveredPhoto === m);
+
+    const targetScale = isHover
+      ? (1 + pinchStrength * 1.6)   // pinch 越强越大
+      : 1;
+
+    m.scale.lerp(tmpV3.set(targetScale, targetScale, 1), 0.15);
+
+    // 淡出其他元素
+    const baseOpacity = (detailMode && !isHover) ? 0.18 : 1;
+    m.material.opacity = THREE.MathUtils.lerp(m.material.opacity, baseOpacity, 0.12);
+  }
+
+  // 详情模式：把选中的照片拉到镜头前
   if (detailMode && hoveredPhoto) {
-    hoveredPhoto.position.lerp(
-      new THREE.Vector3(0, PARAMS.TREE_HEIGHT / 2, 2),
-      0.08
-    );
+    hoveredPhoto.position.lerp(new THREE.Vector3(0, PARAMS.TREE_HEIGHT * 0.55, 2.2), 0.08);
   }
 
-  treePoints.rotation.y += 0.002;
+  // 默认轻微自转（在无手时也有一点点）
+  if (now - lastHandSeenAt > PARAMS.NO_HAND_TIMEOUT_MS) {
+    treePoints.rotation.y += PARAMS.ROTATE_SPEED;
+    photoGroup.rotation.y = treePoints.rotation.y;
+  }
+
   renderer.render(scene, camera);
 }
 
