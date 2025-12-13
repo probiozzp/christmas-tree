@@ -1,126 +1,91 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>3D 手势控制粒子圣诞树</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    html, body { margin: 0; padding: 0; overflow: hidden; background: #05080f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
-    #ui {
-      position: fixed;
-      top: 12px;
-      left: 12px;
-      z-index: 10;
-      color: #fff;
-      user-select: none;
-      font-size: 14px;
-      line-height: 1.35;
-      background: rgba(0,0,0,0.25);
-      padding: 10px 12px;
-      border-radius: 12px;
-      backdrop-filter: blur(6px);
-      max-width: 420px;
+    html, body { margin:0; padding:0; overflow:hidden; background:#05080f; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; }
+    #ui{
+      position:fixed; left:12px; top:12px; z-index:10;
+      color:#fff; background:rgba(0,0,0,.25);
+      padding:10px 12px; border-radius:12px; backdrop-filter: blur(6px);
+      font-size:14px; line-height:1.35; max-width:520px;
+      user-select:none;
     }
-    #hint {
-      position: fixed;
-      bottom: 12px;
-      left: 12px;
-      z-index: 10;
-      color: rgba(255,255,255,0.85);
-      font-size: 12px;
-      background: rgba(0,0,0,0.25);
-      padding: 10px 12px;
-      border-radius: 12px;
-      backdrop-filter: blur(6px);
-      max-width: 460px;
-      white-space: pre-line;
+    #ui code{ opacity:.9; }
+    #startBtn{
+      margin-top:10px;
+      border:1px solid rgba(255,255,255,.22);
+      background:rgba(255,255,255,.08);
+      color:#fff; padding:8px 12px; border-radius:10px;
+      cursor:pointer; font-size:13px;
     }
-    #startBtn {
-      margin-top: 10px;
-      appearance: none;
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(255,255,255,0.08);
-      color: #fff;
-      padding: 8px 12px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    #startBtn:hover { background: rgba(255,255,255,0.12); }
-    #startBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+    #startBtn:hover{ background:rgba(255,255,255,.12); }
+    #startBtn:disabled{ opacity:.55; cursor:not-allowed; }
+    #status{ margin-top:8px; font-size:12px; opacity:.85; white-space:pre-line; }
 
-    #status {
-      margin-top: 8px;
-      font-size: 12px;
-      opacity: 0.85;
-      white-space: pre-line;
+    #hint{
+      position:fixed; left:12px; bottom:12px; z-index:10;
+      color:rgba(255,255,255,.86); background:rgba(0,0,0,.25);
+      padding:10px 12px; border-radius:12px; backdrop-filter: blur(6px);
+      font-size:12px; line-height:1.4; max-width:520px; white-space:pre-line;
     }
-
-    #err {
-      position: fixed;
-      top: 12px;
-      right: 12px;
-      z-index: 20;
-      color: #ffd7d7;
-      font-size: 12px;
-      background: rgba(80,0,0,0.45);
-      padding: 10px 12px;
-      border-radius: 12px;
-      max-width: 520px;
-      white-space: pre-wrap;
-      display: none;
+    #err{
+      position:fixed; right:12px; top:12px; z-index:20;
+      display:none; max-width:560px; white-space:pre-wrap;
+      color:#ffd7d7; background:rgba(80,0,0,.45);
+      padding:10px 12px; border-radius:12px; font-size:12px;
     }
   </style>
 </head>
 <body>
 
 <div id="ui">
-  🎄 3D 手势控制粒子圣诞树（预置照片挂件）
+  🎄 3D 手势控制粒子圣诞树（GitHub Pages）
   <div style="margin-top:6px;opacity:.85">
-    预置图片路径：<code>./assets/1.jpg</code> / <code>2.jpg</code> / <code>3.jpg</code>
+    图片来自仓库 <code>assets/</code> 文件夹（自动读取全部图片，后续增加无需改代码）
   </div>
   <button id="startBtn">▶ 开始体验（开启摄像头）</button>
-  <div id="status">状态：未启动摄像头</div>
+  <div id="status">状态：未启动（你可以先看到粒子树动画）</div>
 </div>
 
 <div id="hint">
-✅ 操作提示（开始体验后）
-👉 食指指向：选中照片（hover）
-🤏 拇指+食指捏合：放大选中照片（捏合越紧放大越大）
+✅ 操作提示（点击开始体验并允许摄像头后）
+👉 手左右移动：旋转场景
 ✋ 张开手掌：粒子散开成星云
 ✊ 握拳：粒子重新聚合成圣诞树
+🤏 拇指+食指捏合：放大「当前指向的」照片
 🤏 持续捏合 300ms：进入详情模式（居中显示）
-松开捏合 / 无手：自动退出
+无手/松开：自动回默认
 </div>
 
 <div id="err"></div>
+<video id="video" style="display:none" playsinline></video>
 
-<!-- 隐藏视频流容器（MediaPipe 需要） -->
-<video id="video" style="display:none;" playsinline></video>
+<!-- 关键：MediaPipe 用普通 script 引入（不要 ESM import） -->
+<script src="https://unpkg.com/@mediapipe/hands/hands.js"></script>
+<script src="https://unpkg.com/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 
-<script type="module">
+<script>
 /* ======================================================
- *  依赖引入（unpkg 通常比 jsdelivr 更稳）
+ *  工具：状态/错误显示
  * ====================================================== */
-import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
-import { Hands } from "https://unpkg.com/@mediapipe/hands/hands.js";
-import { Camera } from "https://unpkg.com/@mediapipe/camera_utils/camera_utils.js";
-
-/* ======================================================
- *  错误显示（避免黑屏无提示）
- * ====================================================== */
-const errBox = document.getElementById("err");
 const statusBox = document.getElementById("status");
-function setStatus(text) { statusBox.textContent = "状态：" + text; }
-function showError(text) {
-  errBox.style.display = "block";
-  errBox.textContent = text;
-}
-window.addEventListener("error", (e) => showError("❌ 运行报错：\n" + (e?.message || e)));
-window.addEventListener("unhandledrejection", (e) => showError("❌ Promise 报错：\n" + (e?.reason?.message || e?.reason || e)));
+const errBox = document.getElementById("err");
+function setStatus(s){ statusBox.textContent = "状态：" + s; }
+function showError(s){ errBox.style.display="block"; errBox.textContent = s; }
+
+window.addEventListener("error", (e) => {
+  showError("❌ 运行报错：\n" + (e?.message || e));
+});
+window.addEventListener("unhandledrejection", (e) => {
+  showError("❌ Promise 报错：\n" + (e?.reason?.message || e?.reason || e));
+});
 
 /* ======================================================
- *  全局参数（可调）
+ *  参数
  * ====================================================== */
 const PARAMS = {
   TREE_HEIGHT: 6,
@@ -133,67 +98,71 @@ const PARAMS = {
 
   NO_HAND_TIMEOUT_MS: 1200,
   DEFAULT_ROTATE_SPEED: 0.002,
+
+  // 手势阈值（可调）
+  OPEN_THRESHOLD: 0.55,
+  FIST_THRESHOLD: 0.38,
 };
 
 /* ======================================================
- *  Three.js 场景
+ *  Three.js 场景初始化（不依赖摄像头，先保证能看到树）
  * ====================================================== */
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x05080f, 8, 22);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 3, 10);
+const camera3d = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+camera3d.position.set(0, 3, 10);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(devicePixelRatio);
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+renderer.setClearColor(0x05080f, 1);
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+scene.add(new THREE.AmbientLight(0xffffff, 0.22));
 
 /* ======================================================
- *  粒子：树形 <-> 星云 混合
+ *  粒子树：树形 <-> 星云 混合
  * ====================================================== */
-const positions = new Float32Array(PARAMS.PARTICLE_COUNT * 3);
-const basePositions = new Float32Array(PARAMS.PARTICLE_COUNT * 3);
-const cloudPositions = new Float32Array(PARAMS.PARTICLE_COUNT * 3);
+const positions = new Float32Array(PARAMS.PARTICLE_COUNT*3);
+const basePositions = new Float32Array(PARAMS.PARTICLE_COUNT*3);
+const cloudPositions = new Float32Array(PARAMS.PARTICLE_COUNT*3);
 
-for (let i = 0; i < PARAMS.PARTICLE_COUNT; i++) {
-  // 树形锥体
-  const y = Math.random() * PARAMS.TREE_HEIGHT;
-  const radius = (1 - y / PARAMS.TREE_HEIGHT) * PARAMS.TREE_RADIUS;
-  const angle = Math.random() * Math.PI * 2;
-  const x = Math.cos(angle) * radius;
-  const z = Math.sin(angle) * radius;
+for(let i=0;i<PARAMS.PARTICLE_COUNT;i++){
+  // 树锥体
+  const y = Math.random()*PARAMS.TREE_HEIGHT;
+  const r = (1 - y/PARAMS.TREE_HEIGHT) * PARAMS.TREE_RADIUS;
+  const a = Math.random()*Math.PI*2;
+  const x = Math.cos(a)*r;
+  const z = Math.sin(a)*r;
+  positions.set([x,y,z], i*3);
+  basePositions.set([x,y,z], i*3);
 
-  positions.set([x, y, z], i * 3);
-  basePositions.set([x, y, z], i * 3);
-
-  // 星云云团
-  const t = Math.random() * Math.PI * 2;
-  const u = Math.random() * 2 - 1;
-  const rr = 4 + Math.random() * 4;
-  const cx = rr * Math.sqrt(1 - u*u) * Math.cos(t);
-  const cy = 2 + rr * u * 0.35;
-  const cz = rr * Math.sqrt(1 - u*u) * Math.sin(t);
-  cloudPositions.set([cx, cy, cz], i * 3);
+  // 星云
+  const t = Math.random()*Math.PI*2;
+  const u = Math.random()*2 - 1;
+  const rr = 4 + Math.random()*4;
+  const cx = rr*Math.sqrt(1-u*u)*Math.cos(t);
+  const cy = 2 + rr*u*0.35;
+  const cz = rr*Math.sqrt(1-u*u)*Math.sin(t);
+  cloudPositions.set([cx,cy,cz], i*3);
 }
 
 const geom = new THREE.BufferGeometry();
 geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 
-const colors = new Float32Array(PARAMS.PARTICLE_COUNT * 3);
+const colors = new Float32Array(PARAMS.PARTICLE_COUNT*3);
 const cGreen = new THREE.Color("#2cff9a");
 const cGold  = new THREE.Color("#ffd27d");
 const cWhite = new THREE.Color("#ffffff");
-for (let i = 0; i < PARAMS.PARTICLE_COUNT; i++) {
+for(let i=0;i<PARAMS.PARTICLE_COUNT;i++){
   const r = Math.random();
-  const c = r < 0.55 ? cGreen : (r < 0.85 ? cGold : cWhite);
-  colors.set([c.r, c.g, c.b], i * 3);
+  const c = r<0.55 ? cGreen : (r<0.85 ? cGold : cWhite);
+  colors.set([c.r,c.g,c.b], i*3);
 }
 geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-const mat = new THREE.PointsMaterial({
+const ptsMat = new THREE.PointsMaterial({
   size: 0.06,
   transparent: true,
   opacity: 0.9,
@@ -202,61 +171,82 @@ const mat = new THREE.PointsMaterial({
   vertexColors: true
 });
 
-const treePoints = new THREE.Points(geom, mat);
+const treePoints = new THREE.Points(geom, ptsMat);
 scene.add(treePoints);
 
-// 树顶星星
 const star = new THREE.Mesh(
   new THREE.SphereGeometry(0.26, 18, 18),
   new THREE.MeshBasicMaterial({ color: 0xffffcc })
 );
-star.position.set(0, PARAMS.TREE_HEIGHT + 0.3, 0);
+star.position.set(0, PARAMS.TREE_HEIGHT+0.3, 0);
 scene.add(star);
 
 /* ======================================================
- *  照片系统（仅预置，不提供用户上传）
+ *  照片（从 assets/ 自动读取全部图片）
  * ====================================================== */
 const photoGroup = new THREE.Group();
 scene.add(photoGroup);
 const photoMeshes = [];
 
-function placePhotoMesh(mesh) {
-  const y = Math.random() * PARAMS.TREE_HEIGHT * 0.85 + 0.5;
-  const r = (1 - y / PARAMS.TREE_HEIGHT) * PARAMS.TREE_RADIUS + 0.6;
-  const a = Math.random() * Math.PI * 2;
-  mesh.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+function placePhoto(mesh){
+  const y = Math.random()*PARAMS.TREE_HEIGHT*0.85 + 0.5;
+  const r = (1 - y/PARAMS.TREE_HEIGHT)*PARAMS.TREE_RADIUS + 0.6;
+  const a = Math.random()*Math.PI*2;
+  mesh.position.set(Math.cos(a)*r, y, Math.sin(a)*r);
   mesh.lookAt(0, y, 0);
 }
 
-function addPhotoFromTexture(texture) {
-  texture.colorSpace = THREE.SRGBColorSpace;
-
-  const geo = new THREE.PlaneGeometry(1, 1);
-  const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 1 });
-  const mesh = new THREE.Mesh(geo, mat);
-
-  placePhotoMesh(mesh);
-  photoGroup.add(mesh);
-  photoMeshes.push(mesh);
-}
-
-function addPhotoFromUrl(url) {
+function addPhotoByUrl(url){
   const loader = new THREE.TextureLoader();
-  loader.load(
-    url,
-    (tex) => addPhotoFromTexture(tex),
-    undefined,
-    () => {
-      // 预置图片找不到时不致命，但会提示
-      console.warn("预置图片加载失败：", url);
-      setStatus("预置图片加载失败（请确认 assets/1.jpg 等已上传）");
-    }
-  );
+  loader.load(url, (tex)=>{
+    tex.colorSpace = THREE.SRGBColorSpace;
+
+    const geo = new THREE.PlaneGeometry(1,1);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent:true, opacity:1 });
+    const mesh = new THREE.Mesh(geo, mat);
+
+    placePhoto(mesh);
+    photoGroup.add(mesh);
+    photoMeshes.push(mesh);
+  }, undefined, (err)=>{
+    console.warn("图片加载失败：", url, err);
+  });
 }
 
-// 预置图片列表：你可以增删
-const defaultPhotos = ["./assets/1.jpg", "./assets/2.jpg", "./assets/3.jpg"];
-defaultPhotos.forEach(addPhotoFromUrl);
+async function loadAssetsImagesAuto(){
+  // 自动列目录：GitHub API -> 文件名 -> 用同域 ./assets/xxx 加载（避免跨域纹理问题）
+  const owner = "probiozzp";
+  const repo  = "christmas-tree";
+  const path  = "assets";
+
+  try{
+    const api = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const res = await fetch(api, { cache: "no-store" });
+    if(!res.ok){
+      setStatus("已启动（assets 列表读取失败：请确认 assets/ 存在且有图片）");
+      return;
+    }
+    const items = await res.json();
+    const exts = [".png",".jpg",".jpeg",".webp",".gif"];
+    const files = items
+      .filter(it => it.type==="file" && exts.some(ext => it.name.toLowerCase().endsWith(ext)))
+      .map(it => it.name);
+
+    if(files.length===0){
+      setStatus("已启动（assets/ 里没找到图片）");
+      return;
+    }
+
+    // 关键：用相对路径同域加载（你以后 assets 增加图片，不用改代码）
+    files.forEach(name => addPhotoByUrl(`./assets/${encodeURIComponent(name)}`));
+
+    setStatus(`未启动摄像头（已发现 assets 图片 ${files.length} 张，正在加载…）`);
+  }catch(e){
+    console.warn(e);
+    setStatus("未启动摄像头（assets 列表读取失败）");
+  }
+}
+loadAssetsImagesAuto();
 
 /* ======================================================
  *  Raycaster（食指 hover）
@@ -267,21 +257,25 @@ let hoveredPhoto = null;
 /* ======================================================
  *  手势状态
  * ====================================================== */
-let pinchStrength = 0;      // 0~1
+let pinchStrength = 0;
 let detailMode = false;
 let lastPinchStart = 0;
 
 let targetRotationY = 0;
 let lastHandSeenAt = 0;
 
-let mode = "TREE";          // TREE / CLOUD
-let targetCloudMix = 0;     // 0=树形，1=星云
+let mode = "TREE";     // TREE / CLOUD
+let targetCloudMix = 0;
 let cloudMix = 0;
 
+// 保存最近一次食指 NDC，用于 hover
+let lastIndexNDC = null;
+
 /* ======================================================
- *  MediaPipe Hands（不自动启动，等用户点按钮）
+ *  MediaPipe Hands 初始化（点击开始按钮后才启动摄像头）
  * ====================================================== */
 const video = document.getElementById("video");
+
 const hands = new Hands({
   locateFile: (file) => `https://unpkg.com/@mediapipe/hands/${file}`
 });
@@ -292,74 +286,60 @@ hands.setOptions({
   minTrackingConfidence: 0.6
 });
 
-hands.onResults((results) => {
-  const lm = results.multiHandLandmarks?.[0];
-  if (!lm) return;
+hands.onResults((results)=>{
+  const lm = results.multiHandLandmarks && results.multiHandLandmarks[0];
+  if(!lm) return;
 
   lastHandSeenAt = performance.now();
 
   const indexTip = lm[8];
   const thumbTip = lm[4];
 
-  // pinch
+  // pinch 强度
   const d = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
   pinchStrength = THREE.MathUtils.clamp(
-    (PARAMS.PINCH_MAX - d) / (PARAMS.PINCH_MAX - PARAMS.PINCH_MIN),
+    (PARAMS.PINCH_MAX - d)/(PARAMS.PINCH_MAX - PARAMS.PINCH_MIN),
     0, 1
   );
 
-  // 旋转：用食指 x 控制
-  const handX = indexTip.x - 0.5; // -0.5~0.5
+  // 旋转（用食指 x）
+  const handX = indexTip.x - 0.5;
   targetRotationY = THREE.MathUtils.clamp(handX * 2.0, -1.2, 1.2);
 
-  // Raycaster：用食指作为光标
-  const ndc = { x: indexTip.x * 2 - 1, y: -(indexTip.y * 2 - 1) };
-  raycaster.setFromCamera(ndc, camera);
-  const hits = raycaster.intersectObjects(photoMeshes);
-  hoveredPhoto = hits[0]?.object || null;
+  // 保存 ndc
+  lastIndexNDC = { x: indexTip.x*2 - 1, y: -(indexTip.y*2 - 1) };
 
-  // 开掌/握拳启发式：指尖到掌心距离和
+  // 开掌/握拳启发式
   const palm = lm[0];
   const tips = [lm[8], lm[12], lm[16], lm[20]];
-  const sumDist = tips.reduce((acc, p) => acc + Math.hypot(p.x - palm.x, p.y - palm.y), 0);
+  const sumDist = tips.reduce((acc,p)=>acc + Math.hypot(p.x - palm.x, p.y - palm.y), 0);
 
-  const OPEN_THRESHOLD = 0.55;
-  const FIST_THRESHOLD = 0.38;
+  if(sumDist > PARAMS.OPEN_THRESHOLD) mode = "CLOUD";
+  else if(sumDist < PARAMS.FIST_THRESHOLD) mode = "TREE";
 
-  if (sumDist > OPEN_THRESHOLD) mode = "CLOUD";
-  else if (sumDist < FIST_THRESHOLD) mode = "TREE";
+  targetCloudMix = (mode==="CLOUD") ? 1 : 0;
 
-  targetCloudMix = (mode === "CLOUD") ? 1 : 0;
-
-  // 详情模式：强 pinch 且 hover 有对象，持续 300ms
-  if (pinchStrength > 0.8 && hoveredPhoto) {
-    if (!lastPinchStart) lastPinchStart = performance.now();
-    if (performance.now() - lastPinchStart > PARAMS.DETAIL_HOLD_MS) detailMode = true;
-  } else {
+  // 详情模式：强 pinch + hover 目标，持续 300ms
+  if(pinchStrength > 0.8 && hoveredPhoto){
+    if(!lastPinchStart) lastPinchStart = performance.now();
+    if(performance.now() - lastPinchStart > PARAMS.DETAIL_HOLD_MS) detailMode = true;
+  }else{
     lastPinchStart = 0;
     detailMode = false;
   }
 });
 
-/* ======================================================
- *  点击开始体验 -> 触发摄像头权限（关键！）
- * ====================================================== */
 let cameraMP = null;
 let started = false;
 
-async function startExperience() {
-  if (started) return;
-  started = true;
+document.getElementById("startBtn").addEventListener("click", async ()=>{
+  if(started) return;
 
   const btn = document.getElementById("startBtn");
   btn.disabled = true;
   setStatus("正在请求摄像头权限…（请允许）");
 
-  try {
-    // 先探测一次权限更友好（部分浏览器无此 API 也没关系）
-    // 不强依赖，失败就继续走 start
-    // await navigator.mediaDevices.getUserMedia({ video: true });
-
+  try{
     cameraMP = new Camera(video, {
       onFrame: async () => {
         await hands.send({ image: video });
@@ -369,109 +349,107 @@ async function startExperience() {
     });
 
     await cameraMP.start();
-    setStatus("摄像头已开启 ✅（可开始手势交互）");
-  } catch (e) {
-    console.error(e);
-    started = false;
+    started = true;
+    setStatus("摄像头已开启 ✅（开始手势交互）");
+  }catch(e){
     btn.disabled = false;
-
-    // 常见：用户拒绝/系统禁用
-    const msg = (e && (e.message || e.name)) ? (e.name + ": " + e.message) : String(e);
+    started = false;
     setStatus("摄像头启动失败 ❌");
+
+    const msg = e?.name ? `${e.name}: ${e.message}` : String(e);
     showError(
       "❌ 摄像头无法启动。\n\n" +
-      "可能原因：\n" +
-      "1) 你曾经对该站点点过“阻止摄像头”（Chrome 会记住，不再弹窗）\n" +
-      "2) 系统权限未允许 Chrome 使用摄像头\n" +
-      "3) 电脑没有摄像头/被其他程序占用\n\n" +
+      "常见原因：\n" +
+      "1) 你曾经对该站点点过“阻止摄像头”（Chrome 以后不会弹窗）\n" +
+      "2) 系统设置里未允许 Chrome 使用摄像头\n" +
+      "3) 摄像头被其他程序占用\n\n" +
       "错误信息：\n" + msg + "\n\n" +
-      "解决：点击地址栏左侧小锁 → 网站设置 → 摄像头 → 允许，然后刷新再点开始体验。"
+      "解决：点地址栏左侧小锁 → 网站设置 → 摄像头 → 允许，然后刷新再点开始体验。"
     );
   }
-}
-document.getElementById("startBtn").addEventListener("click", startExperience);
+});
 
 /* ======================================================
  *  动画循环
  * ====================================================== */
 const tmpV3 = new THREE.Vector3();
-
-function animate() {
+function animate(){
   requestAnimationFrame(animate);
 
   const now = performance.now();
 
   // 无手回退
-  if (now - lastHandSeenAt > PARAMS.NO_HAND_TIMEOUT_MS) {
+  if(now - lastHandSeenAt > PARAMS.NO_HAND_TIMEOUT_MS){
     pinchStrength = 0;
     detailMode = false;
     hoveredPhoto = null;
     mode = "TREE";
     targetCloudMix = 0;
     targetRotationY = 0;
+    lastIndexNDC = null;
   }
 
-  // 粒子混合
+  // hover：只有当有 lastIndexNDC 才做 raycast
+  if(lastIndexNDC && photoMeshes.length){
+    raycaster.setFromCamera(lastIndexNDC, camera3d);
+    const hits = raycaster.intersectObjects(photoMeshes);
+    hoveredPhoto = hits[0]?.object || null;
+  }else{
+    hoveredPhoto = null;
+  }
+
+  // 粒子混合（树形<->星云）
   cloudMix = THREE.MathUtils.lerp(cloudMix, targetCloudMix, 0.04);
-
   const pos = geom.attributes.position.array;
-  for (let i = 0; i < PARAMS.PARTICLE_COUNT; i++) {
-    const bi = i * 3;
-    const bx = basePositions[bi];
-    const by = basePositions[bi + 1];
-    const bz = basePositions[bi + 2];
 
-    const cx = cloudPositions[bi];
-    const cy = cloudPositions[bi + 1];
-    const cz = cloudPositions[bi + 2];
+  for(let i=0;i<PARAMS.PARTICLE_COUNT;i++){
+    const bi = i*3;
+    const bx = basePositions[bi],     by = basePositions[bi+1], bz = basePositions[bi+2];
+    const cx = cloudPositions[bi],    cy = cloudPositions[bi+1], cz = cloudPositions[bi+2];
 
-    const floatY = Math.sin((Date.now() * 0.001) + i) * 0.02;
+    const floatY = Math.sin((Date.now()*0.001) + i) * 0.02;
 
-    pos[bi]     = THREE.MathUtils.lerp(bx, cx, cloudMix);
-    pos[bi + 1] = THREE.MathUtils.lerp(by + floatY, cy, cloudMix);
-    pos[bi + 2] = THREE.MathUtils.lerp(bz, cz, cloudMix);
+    pos[bi]   = THREE.MathUtils.lerp(bx, cx, cloudMix);
+    pos[bi+1] = THREE.MathUtils.lerp(by + floatY, cy, cloudMix);
+    pos[bi+2] = THREE.MathUtils.lerp(bz, cz, cloudMix);
   }
   geom.attributes.position.needsUpdate = true;
 
-  // 旋转
+  // 场景旋转
   treePoints.rotation.y = THREE.MathUtils.lerp(treePoints.rotation.y, targetRotationY, 0.08);
   photoGroup.rotation.y = treePoints.rotation.y;
 
   // 星星呼吸
-  star.scale.setScalar(1 + Math.sin(Date.now() * 0.002) * 0.05);
+  star.scale.setScalar(1 + Math.sin(Date.now()*0.002)*0.05);
 
-  // 照片 hover + pinch 缩放 + 详情模式淡出
-  for (const m of photoMeshes) {
+  // 照片：hover + pinch 缩放 + 详情模式淡出
+  for(const m of photoMeshes){
     const isHover = (hoveredPhoto === m);
-    const targetScale = isHover ? (1 + pinchStrength * 1.6) : 1;
+    const targetScale = isHover ? (1 + pinchStrength*1.6) : 1;
     m.scale.lerp(tmpV3.set(targetScale, targetScale, 1), 0.15);
 
     const baseOpacity = (detailMode && !isHover) ? 0.18 : 1;
     m.material.opacity = THREE.MathUtils.lerp(m.material.opacity, baseOpacity, 0.12);
   }
 
-  // 详情模式：把选中的照片拉到镜头前
-  if (detailMode && hoveredPhoto) {
-    hoveredPhoto.position.lerp(new THREE.Vector3(0, PARAMS.TREE_HEIGHT * 0.55, 2.2), 0.08);
+  // 详情模式：居中显示选中照片
+  if(detailMode && hoveredPhoto){
+    hoveredPhoto.position.lerp(new THREE.Vector3(0, PARAMS.TREE_HEIGHT*0.55, 2.2), 0.08);
   }
 
-  // 未启动摄像头也给一点点自转，避免静态黑屏错觉
-  if (!started || (now - lastHandSeenAt > PARAMS.NO_HAND_TIMEOUT_MS)) {
+  // 未启动或无手：轻微自转，保证不黑屏
+  if(!started || (now - lastHandSeenAt > PARAMS.NO_HAND_TIMEOUT_MS)){
     treePoints.rotation.y += PARAMS.DEFAULT_ROTATE_SPEED;
     photoGroup.rotation.y = treePoints.rotation.y;
   }
 
-  renderer.render(scene, camera);
+  renderer.render(scene, camera3d);
 }
-
 animate();
 
-/* ======================================================
- *  resize
- * ====================================================== */
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+window.addEventListener("resize", ()=>{
+  camera3d.aspect = window.innerWidth/window.innerHeight;
+  camera3d.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 </script>
