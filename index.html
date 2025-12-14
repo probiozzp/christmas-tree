@@ -3,34 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Luxury Interactive Christmas Tree (Vanilla + Three.js + MediaPipe)</title>
+  <title>Grand Luxury Interactive Christmas Tree (Vanilla + Three.js + MediaPipe)</title>
   <style>
     html, body { margin:0; padding:0; width:100%; height:100%; background:#05080f; overflow:hidden; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial; }
     #app { position:fixed; inset:0; }
     canvas.webgl { position:absolute; inset:0; width:100%; height:100%; display:block; }
-    /* 顶部 UI */
+
     .hud {
       position: absolute; left: 14px; top: 14px; z-index: 10;
       padding: 12px 14px; border-radius: 16px;
       background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12);
       color: rgba(255,255,255,0.92); backdrop-filter: blur(10px);
-      max-width: 560px;
+      max-width: 620px;
       box-shadow: 0 20px 70px rgba(0,0,0,0.55);
     }
-    .title { font-weight: 700; letter-spacing: 0.2px; }
-    .sub { font-size: 12px; opacity: 0.85; margin-top: 6px; line-height: 1.35; }
+    .title { font-weight: 800; letter-spacing: 0.2px; }
+    .sub { font-size: 12px; opacity: 0.86; margin-top: 6px; line-height: 1.4; }
     .row { display:flex; gap: 10px; align-items:center; flex-wrap:wrap; margin-top: 10px; }
     button {
       appearance:none; border: 1px solid rgba(255,255,255,0.16);
       background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.95);
       padding: 10px 12px; border-radius: 14px;
-      cursor:pointer; font-weight: 600; font-size: 13px;
+      cursor:pointer; font-weight: 700; font-size: 13px;
     }
     button:hover { background: rgba(255,255,255,0.12); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
-    .debug { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; opacity: 0.85; margin-top: 10px; line-height: 1.35; }
+    .debug { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; opacity: 0.86; margin-top: 10px; line-height: 1.35; white-space: pre; }
 
-    /* 右上角摄像头面板 */
     .panel {
       position:absolute; right: 14px; top: 14px; z-index:10;
       width: 360px; border-radius: 16px; overflow:hidden;
@@ -46,6 +45,7 @@
     .panelFoot { padding: 10px 12px; font-size: 11px; opacity: 0.78; border-top: 1px solid rgba(255,255,255,0.10); line-height: 1.35; white-space: pre-line; }
   </style>
 </head>
+
 <body>
   <div id="app">
     <canvas class="webgl" id="webgl"></canvas>
@@ -53,9 +53,9 @@
     <div class="hud">
       <div class="title">Grand Luxury Interactive Christmas Tree</div>
       <div class="sub">
-        深祖母绿 + 高光金色 + 梦幻辉光。<br/>
-        手势：张开→散开(CHAOS)，握拳→聚合(FORMED)；手左右滑动→稳定旋转视角（不甩飞）。<br/>
-        拍立得：食指指尖 hover；捏合缩放；若没 hover，捏合会自动放大“离相机最近”的照片；捏合保持 300ms 进入详情模式。
+        深祖母绿 + 高光金色 + 电影级辉光。<br/>
+        手势：张开→散开(CHAOS)；握拳→聚合(FORMED)；左右滑动→稳定旋转视角（不甩飞）。<br/>
+        拍立得：食指 hover；🤏 捏合放大；捏合时会自动锁定最近照片；放大单张时树整体停止旋转。
       </div>
 
       <div class="row">
@@ -64,9 +64,7 @@
         <span id="status" style="font-size:12px; opacity:0.85;">未启动</span>
       </div>
 
-      <div class="debug" id="debug">
-        hand: false | mode: FORMED | radius: 20.0 | yaw: 0.00 | roll: 0.00
-      </div>
+      <div class="debug" id="debug">loading…</div>
     </div>
 
     <div class="panel">
@@ -85,15 +83,15 @@
     </div>
   </div>
 
-  <!-- ✅ MediaPipe Hands：常规 <script> 引入，得到全局 Hands -->
+  <!-- ✅ MediaPipe Hands：常规 script 引入（得到全局 Hands） -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
-  <!-- Three.js 用现代 module -->
+  <!-- ✅ Three.js 用 module -->
   <script type="module">
     import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 
     /*************************************************************
-     * 0) 小工具
+     * 0) 工具
      *************************************************************/
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
     const lerp = (a, b, t) => a + (b - a) * t;
@@ -115,7 +113,7 @@
     const octx = overlay.getContext("2d");
 
     /*************************************************************
-     * 2) Three.js：scene / camera / renderer
+     * 2) Three.js scene / camera / renderer
      *************************************************************/
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#05080f");
@@ -129,7 +127,6 @@
     const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 200);
     const treeCenter = new THREE.Vector3(0, 4, 0);
 
-    // 相机状态（手势驱动）
     const cameraState = {
       radius: 20,
       targetRadius: 20,
@@ -139,10 +136,10 @@
       targetPitch: 0.08,
     };
 
-    // ✅ 优化左右控制：用“增量式 yaw”避免一甩飞（改动点 #2）
+    // ✅ 更稳的左右控制（速度积分）
     const orbitInput = {
-      yawVel: 0,          // 当前 yaw 速度
-      targetYawVel: 0,    // 目标 yaw 速度（由手输入）
+      yawVel: 0,
+      targetYawVel: 0,
     };
 
     function applyCamera(dt) {
@@ -180,7 +177,7 @@
     scene.add(emeraldGlow);
 
     /*************************************************************
-     * 4) 圣诞树核心（不改树的构成/粒子/挂件逻辑）
+     * 4) 圣诞树核心（保持你原来的构成）
      *************************************************************/
     const MODE = { FORMED: 0, CHAOS: 1 };
     let mode = MODE.FORMED;
@@ -311,7 +308,7 @@
     root.add(surfacePoints);
 
     /*************************************************************
-     * 4.2 挂件 InstancedMesh（保持不变）
+     * 4.2 挂件 InstancedMesh（保持你原来的）
      *************************************************************/
     const ORN_COUNT = 900;
     const ornGroup = new THREE.Group();
@@ -346,7 +343,6 @@
 
     const ornTarget = [];
     const ornChaos = [];
-    const ornWeight = [];
 
     function randomConeOrn() {
       const y = Math.random() * (TREE_H * 0.85) + 0.6;
@@ -358,9 +354,6 @@
     for (let i = 0; i < ORN_COUNT; i++) {
       ornTarget.push(randomConeOrn());
       ornChaos.push(chaosPoint());
-      if (i < ballCount) ornWeight.push(1.0);
-      else if (i < ballCount + boxCount) ornWeight.push(2.2);
-      else ornWeight.push(0.6);
     }
 
     const tmpObj = new THREE.Object3D();
@@ -433,12 +426,8 @@
     }
 
     /*************************************************************
-     * 4.3 顶部星星：✅改为“竖着的五角星”（改动点 #1）
+     * 4.3 顶部“竖着的五角星”
      *************************************************************/
-    const star = new THREE.Group();
-    star.position.set(0, TREE_H + 0.55, 0);
-    root.add(star);
-
     function makeRadialTexture() {
       const c = document.createElement("canvas");
       c.width = 256; c.height = 256;
@@ -456,12 +445,11 @@
     }
     const glowTex = makeRadialTexture();
 
-    function makeFivePointStarShape(R = 0.42, r = 0.18) {
-      // 五角星 2D shape（中心在 0,0）
+    function makeFivePointStarShape(R = 0.46, r = 0.20) {
       const shape = new THREE.Shape();
       const pts = [];
       const n = 5;
-      const start = -Math.PI / 2; // 顶点朝上
+      const start = -Math.PI / 2;
       for (let i = 0; i < n * 2; i++) {
         const ang = start + (i * Math.PI) / n;
         const rad = (i % 2 === 0) ? R : r;
@@ -473,8 +461,11 @@
       return shape;
     }
 
-    const starShape = makeFivePointStarShape(0.46, 0.20);
-    const starGeo = new THREE.ExtrudeGeometry(starShape, {
+    const star = new THREE.Group();
+    star.position.set(0, TREE_H + 0.55, 0);
+    root.add(star);
+
+    const starGeo = new THREE.ExtrudeGeometry(makeFivePointStarShape(), {
       depth: 0.12,
       bevelEnabled: true,
       bevelThickness: 0.03,
@@ -493,9 +484,6 @@
     });
 
     const starMesh = new THREE.Mesh(starGeo, starMat);
-    // “竖着”：默认五角星面在 XY 平面，我们让它竖着朝向相机（像招牌一样）
-    // 由于相机绕 y 旋转，我们每帧让星星 billboard（lookAt 相机），达到“始终竖着对着你”
-    starMesh.rotation.y = 0;
     star.add(starMesh);
 
     const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -510,7 +498,7 @@
     star.add(glowSprite);
 
     /*************************************************************
-     * 5) 白色粒子光晕（保持不变）
+     * 5) 白色粒子光晕（Halo）
      *************************************************************/
     const HALO_COUNT = 2200;
     const haloGeo = new THREE.BufferGeometry();
@@ -573,22 +561,92 @@
     root.add(halo);
 
     /*************************************************************
-     * 6) 拍立得照片挂件（内置 assets）
+     * 6) ✅ 新增：金色螺旋上升发光条带（绕树上升）
+     *************************************************************/
+    function createSpiralRibbon() {
+  const points = [];
+  const turns = 8.2;                  // 圈数可微调：越大越密
+  const height = TREE_H + 0.55;        // 条带最高到星星下方一点
+  const surfaceOffset = 0.10;          // 离树表面“贴近”程度：越小越贴
+
+  for (let i = 0; i <= 280; i++) {
+    const t = i / 280;
+
+    // 这条 ribbon 的 y（从树底到接近树顶）
+    const y = t * height;
+
+    // ✅ 关键：圆锥在该高度的“表面半径”
+    // coneR 在 y=0 最大，y=height 最小（趋近 0）
+    const coneR = Math.max(0.02, (1.0 - (y / TREE_H)) * TREE_R);
+
+    // ✅ 让条带贴着树表面：半径 = coneR + 很小的 offset
+    // 你要更贴就把 surfaceOffset 调到 0.05～0.08
+    const radius = coneR + surfaceOffset;
+
+    // 螺旋角度
+    const angle = t * Math.PI * 2 * turns;
+
+    points.push(new THREE.Vector3(
+      Math.cos(angle) * radius,
+      y + 0.20,                        // 整体抬高一点，避免穿入地面
+      Math.sin(angle) * radius
+    ));
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points);
+
+  // ✅ Tube 半径改小：避免“圆柱管子感”
+  const geo = new THREE.TubeGeometry(curve, 360, 0.035, 10, false);
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uColor: { value: new THREE.Color("#ffd27d") },
+    },
+    vertexShader: `
+      varying float vT;
+      void main(){
+        vT = uv.x;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uTime;
+      varying float vT;
+      void main(){
+        // 高亮像“金箔扫光”一样沿条带流动
+        float scan = sin(vT*26.0 - uTime*3.4)*0.5+0.5;
+        float core = smoothstep(0.35, 1.0, scan);
+        float a = 0.10 + core * 0.85;    // 更“贴着树”的光带，透明一点更自然
+        gl_FragColor = vec4(uColor, a);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 2;
+  return { mesh, mat };
+}    
+    
+
+    const ribbon = createSpiralRibbon();
+    root.add(ribbon.mesh);
+
+    /*************************************************************
+     * 7) 拍立得照片挂件（默认就显示照片）
+     *    ✅ 自动扫描 assets/1.jpg ~ assets/60.jpg
+     *    ✅ 沿螺旋位置预排
      *************************************************************/
     const raycaster = new THREE.Raycaster();
     const polaroidGroup = new THREE.Group();
     root.add(polaroidGroup);
 
-    const POLAROIDS = [
-      "./assets/1.jpg",
-      "./assets/2.jpg",
-      "./assets/3.jpg",
-      "./assets/4.jpg",
-      "./assets/5.jpg",
-      "./assets/6.jpg"
-    ];
-
     const textureLoader = new THREE.TextureLoader();
+    const polaroids = [];
 
     function makePolaroid(tex) {
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -605,6 +663,7 @@
       const frame = new THREE.Mesh(new THREE.PlaneGeometry(cardW, cardH), frameMat);
       g.add(frame);
 
+      // ✅ 默认就显示照片
       const photoMat = new THREE.MeshStandardMaterial({
         map: tex, roughness: 0.25, metalness: 0.05, transparent: true, opacity: 1
       });
@@ -619,20 +678,29 @@
       bottom.position.set(0, -0.46, 0.002);
       g.add(bottom);
 
-      const hit = new THREE.Mesh(new THREE.PlaneGeometry(cardW * 1.08, cardH * 1.08), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
+      const hit = new THREE.Mesh(
+        new THREE.PlaneGeometry(cardW * 1.12, cardH * 1.12),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+      );
       hit.position.set(0, 0, 0.004);
       g.add(hit);
 
-      const hook = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.11, 0.04), new THREE.MeshStandardMaterial({ color: "#ffd27d", metalness: 0.85, roughness: 0.18 }));
+      const hook = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.11, 0.04),
+        new THREE.MeshStandardMaterial({ color: "#ffd27d", metalness: 0.85, roughness: 0.18 })
+      );
       hook.position.set(0, cardH * 0.52, 0.01);
       g.add(hook);
 
-      const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.7, 10), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.45 }));
+      const wire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.008, 0.7, 10),
+        new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.45 })
+      );
       wire.position.set(0, cardH * 0.52 + 0.35, 0.0);
       g.add(wire);
 
       const gloss = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: glowTex, color: "#ffffff", transparent: true, opacity: 0.0,
+        map: glowTex, color: "#ffffff", transparent: true, opacity: 0.10,
         blending: THREE.AdditiveBlending, depthWrite: false
       }));
       gloss.scale.set(1.8, 2.2, 1);
@@ -643,31 +711,76 @@
       return g;
     }
 
-    const polaroids = [];
+    // 螺旋布局：第 i 张（total 张）
+    function spiralPhotoPosition(i, total) {
+      const t = (total <= 1) ? 0.0 : (i / (total - 1));
+      const turns = 6.4;
+      const angle = t * Math.PI * 2 * turns;
 
-    async function loadPolaroids() {
-      for (let i = 0; i < POLAROIDS.length; i++) {
-        const url = POLAROIDS[i];
+      const y = 0.85 + t * TREE_H * 0.85;
+      const r = (TREE_R + 0.95) * (1.0 - t * 0.10); // 顶部略收
+
+      return new THREE.Vector3(
+        Math.cos(angle) * r,
+        y,
+        Math.sin(angle) * r
+      );
+    }
+
+    // 扫描 assets/1..max 的图片是否存在
+    async function discoverAssetsImages(max = 60) {
+      const urls = [];
+      let missStreak = 0;
+
+      for (let i = 1; i <= max; i++) {
+        const url = `./assets/${i}.jpg`;
+
+        try {
+          // 用 fetch 检查是否存在（同域下 OK）
+          const res = await fetch(url, { method: "GET", cache: "no-store" });
+          if (res.ok) {
+            urls.push(url);
+            missStreak = 0;
+          } else {
+            missStreak++;
+          }
+        } catch {
+          missStreak++;
+        }
+
+        // 连续错太多就提前停止（避免大量 404）
+        if (missStreak >= 8 && urls.length >= 1) break;
+      }
+
+      return urls;
+    }
+
+    async function loadPolaroidsAuto() {
+      const urls = await discoverAssetsImages(60);
+      statusEl.textContent = urls.length ? `发现 assets 图片：${urls.length} 张` : `未发现 assets/1.jpg…（请放入 assets 目录）`;
+
+      for (let i = 0; i < urls.length; i++) {
+        const url = urls[i];
         try {
           const tex = await new Promise((resolve, reject) => {
             textureLoader.load(url, resolve, undefined, reject);
           });
+
           const card = makePolaroid(tex);
 
-          const y = Math.random() * (TREE_H * 0.8) + 0.9;
-          const r = (1 - y / TREE_H) * TREE_R + 1.05;
-          const a = Math.random() * Math.PI * 2;
-          const target = new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r);
-          const chaos = chaosPoint();
-
-          card.position.copy(target);
-          card.lookAt(0, target.y, 0);
-          card.rotateZ((Math.random() - 0.5) * 0.5);
-
+          // 先占位：后面统一按 total 重新排
           card.userData.index = i;
+
+          // chaos / target 双坐标
+          const target = spiralPhotoPosition(i, urls.length);
+          const chaos = chaosPoint();
           card.userData.target = target;
           card.userData.chaos = chaos;
           card.userData.baseScale = 1.0;
+
+          card.position.copy(target);
+          card.lookAt(0, target.y, 0);
+          card.rotateZ((Math.random() - 0.5) * 0.35);
 
           polaroidGroup.add(card);
           polaroids.push(card);
@@ -675,10 +788,21 @@
           console.warn("加载图片失败：", url, e);
         }
       }
+
+      // 排完后再轻微抖动一下层次（避免完全机械）
+      for (let i = 0; i < polaroids.length; i++) {
+        const card = polaroids[i];
+        const t = card.userData.target.clone();
+        t.x += (Math.random() - 0.5) * 0.18;
+        t.z += (Math.random() - 0.5) * 0.18;
+        t.y += (Math.random() - 0.5) * 0.10;
+        card.userData.target.copy(t);
+        card.position.copy(t);
+      }
     }
 
     /*************************************************************
-     * 7) 手势系统：MediaPipe Hands
+     * 8) 手势系统：MediaPipe Hands
      *************************************************************/
     let started = false;
     let mpHands = null;
@@ -755,7 +879,6 @@
       handState.open = hysteresis(openScoreRaw, 0.62, 0.50, handState.open);
       handState.fist = hysteresis(1.0 - fistScoreRaw, 0.32, 0.22, handState.fist);
 
-      // yaw 输入（-1..1）：镜像修正，让左右直觉一致
       const centerX = (minX + maxX) * 0.5;
       let yaw = -((centerX - 0.5) * 2);
 
@@ -822,14 +945,11 @@
 
         handState.indexNDC = { x: g.ndcX, y: g.ndcY };
 
-        // 状态机：张开->CHAOS；握拳->FORMED
         if (handState.fist) mode = MODE.FORMED;
         else if (handState.open) mode = MODE.CHAOS;
 
-        // ✅ 左右滑动控制优化：把“绝对角度”改成“速度积分”（改动点 #2）
-        // 让手居中时相机不动；越偏左右旋转越快；带死区避免抖动。
-        const dx = deadzone(handState.yaw, 0.14);      // [-1..1] after deadzone
-        const rollAssist = deadzone(handState.roll, 0.25) * 0.35; // 少量辅助
+        const dx = deadzone(handState.yaw, 0.14);
+        const rollAssist = deadzone(handState.roll, 0.25) * 0.35;
         orbitInput.targetYawVel = THREE.MathUtils.clamp((dx * 1.7 + rollAssist) * 1.25, -2.2, 2.2);
       });
 
@@ -866,7 +986,7 @@
     });
 
     /*************************************************************
-     * 8) Raycaster hover（保留），但 pinch 时会自动锁最近照片
+     * 9) Raycaster hover + pinch 自动锁最近照片
      *************************************************************/
     function updateRaycastHover() {
       if (!handState.hasHand || !handState.indexNDC || polaroids.length === 0) {
@@ -888,14 +1008,14 @@
       handState.hoverIndex = (typeof idx === "number") ? idx : -1;
     }
 
-    // ✅ 新增：pinch 时若没 hover，则选“离相机最近”的拍立得（改动点 #3）
     function findNearestPolaroidToCamera() {
       if (!polaroids.length) return -1;
       let best = -1;
       let bestD = Infinity;
       const camPos = camera.position;
+      const wp = new THREE.Vector3();
+
       for (const card of polaroids) {
-        const wp = new THREE.Vector3();
         card.getWorldPosition(wp);
         const d = wp.distanceTo(camPos);
         if (d < bestD) { bestD = d; best = card.userData.index; }
@@ -904,9 +1024,9 @@
     }
 
     /*************************************************************
-     * 9) update
+     * 10) 更新：表面粒子 & 拍立得
      *************************************************************/
-    function updateSurfacePositions(time) {
+    function updateSurface(time) {
       surfaceMat.uniforms.uTime.value = time;
       surfaceMat.uniforms.uMix.value = mix;
     }
@@ -914,13 +1034,13 @@
     function updatePolaroids(dt, time) {
       const tMix = mix;
 
-      // pinch 自动锁最近：仅在 pinch 有效且 hover 为空时触发
+      // pinch 时若没 hover，就锁最近照片
       const pinchActive = handState.hasHand && handState.pinch > 0.22;
       if (pinchActive && handState.hoverIndex < 0) {
         handState.hoverIndex = findNearestPolaroidToCamera();
       }
 
-      // 详情模式：hover（或最近锁定）+ pinch 持续 300ms
+      // 详情模式：pinch 持续 300ms
       const PINCH_DETAIL_ON = 0.72;
       const hovering = (handState.hoverIndex >= 0);
 
@@ -933,7 +1053,6 @@
       } else {
         handState.pinchHoldStart = 0;
         handState.detailMode = false;
-        // 不强制清 selectedIndex，让它下次还能接着用；但无手会清
       }
 
       for (const card of polaroids) {
@@ -953,10 +1072,8 @@
         if (!isSelected) {
           card.position.lerp(p, 0.22);
           card.lookAt(0, card.position.y, 0);
-          card.rotateZ(Math.sin(time * 0.9 + idx) * 0.06);
-        }
-
-        if (isSelected) {
+          card.rotateZ(Math.sin(time * 0.9 + idx) * 0.04);
+        } else {
           card.position.lerp(new THREE.Vector3(0, 4.2, 6.0), 0.12);
           card.rotation.x = damp(card.rotation.x, 0, 10, dt);
           card.rotation.y = damp(card.rotation.y, 0, 10, dt);
@@ -966,11 +1083,13 @@
         const pinch = handState.pinch;
         const base = isSelected ? 2.1 : 1.0;
 
-        // ✅ pinch 放大：对 hover（或最近锁定）始终生效
+        // pinch 放大：对 hover（或最近锁定）生效
         const zoom = isHover ? (1.0 + pinch * 2.2) : 1.0;
         const targetScale = base * zoom;
+
         card.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.18);
 
+        // ✅ 默认照片可见：opacity 不再负责“显示/不显示”
         const fadeOthers = handState.detailMode && !isSelected;
         const opacityTarget = fadeOthers ? 0.18 : 1.0;
 
@@ -980,13 +1099,13 @@
         bottomMat.opacity = damp(bottomMat.opacity, opacityTarget, 10, dt);
 
         const gl = (Math.sin(time * 1.7 + idx) * 0.5 + 0.5);
-        const glossTarget = (isHover ? 0.25 : 0.06) * gl;
+        const glossTarget = (isHover ? 0.30 : 0.12) * gl;
         glossMat.opacity = damp(glossMat.opacity, glossTarget, 10, dt);
       }
     }
 
     /*************************************************************
-     * 10) 无手自动回归
+     * 11) 无手回归
      *************************************************************/
     function noHandFallback(now) {
       if (!handState.hasHand) {
@@ -996,7 +1115,7 @@
           orbitInput.yawVel = damp(orbitInput.yawVel, 0, 6.0, 1/60);
 
           cameraState.targetYaw = damp(cameraState.targetYaw, 0, 3.0, 1/60);
-          cameraState.targetRadius = damp(cameraState.targetRadius, 20, 3.0, 1/60);
+          cameraState.targetRadius = 20;
 
           handState.pinch = damp(handState.pinch, 0, 6.0, 1/60);
           handState.hoverIndex = -1;
@@ -1007,9 +1126,10 @@
     }
 
     /*************************************************************
-     * 11) 主循环
+     * 12) 主循环
      *************************************************************/
     let lastT = performance.now() * 0.001;
+    let rootSpin = 0;
 
     function animate() {
       requestAnimationFrame(animate);
@@ -1018,50 +1138,61 @@
       const dt = Math.min(0.033, now - lastT);
       lastT = now;
 
+      // 状态机混合
       targetMix = (mode === MODE.CHAOS) ? 1 : 0;
       mix = damp(mix, targetMix, 2.6, dt);
 
-      root.rotation.y += 0.0022;
-      root.position.y = Math.sin(now * 0.7) * 0.03;
-
-      // 星星：保持竖着且面对相机（招牌式）
+      // ⭐ 星星始终竖着面对相机
       starMesh.lookAt(camera.position);
-      star.rotation.y = now * 0.35; // 整体轻微旋转也可以保留一点“奢华动感”
       glowSprite.material.opacity = 0.55 + (Math.sin(now * 2.0) * 0.5 + 0.5) * 0.22;
 
+      // halo & ribbon 动起来
       haloMat.uniforms.uTime.value = now;
+      ribbon.mat.uniforms.uTime.value = now;
 
+      // ray hover / polaroids / ornaments / surface
       updateRaycastHover();
       updatePolaroids(dt, now);
       updateOrnaments(dt, now);
-      updateSurfacePositions(now);
+      updateSurface(now);
 
       noHandFallback(performance.now());
 
-      // ✅ 优化相机 yaw：速度积分 + 限速 + 平滑
+      // ✅ 左右滑动：速度积分 + 限制
       orbitInput.yawVel = damp(orbitInput.yawVel, orbitInput.targetYawVel, 10.0, dt);
       cameraState.targetYaw += orbitInput.yawVel * dt;
 
-      // 防止无限累积导致不舒服：把 yaw 限制在 [-pi, pi] 内（循环归一）
       if (cameraState.targetYaw > Math.PI) cameraState.targetYaw -= Math.PI * 2;
       if (cameraState.targetYaw < -Math.PI) cameraState.targetYaw += Math.PI * 2;
 
-      // 注意：你之前的远近逻辑如果现在不想动，就保持默认 20（这里不再自动改 radius）
-      // 你要求“不擅自改变树的外观和组成”，我这里把 radius 固定为默认体验（更稳）
       cameraState.targetRadius = 20;
 
       applyCamera(dt);
 
+      // ✅ 关键新增：pinch 放大单张照片时，停止整体旋转
+      const zoomingSingle =
+        handState.hasHand &&
+        handState.pinch > 0.28 &&
+        (handState.hoverIndex >= 0 || (handState.detailMode && handState.selectedIndex >= 0));
+
+      if (!zoomingSingle) {
+        rootSpin += 0.0022;     // 原来的整体旋转速度
+      }
+      root.rotation.y = rootSpin;
+      root.position.y = Math.sin(now * 0.7) * 0.03;
+
       debugEl.textContent =
-        `hand: ${handState.hasHand} | mode: ${mode === MODE.CHAOS ? "CHAOS" : "FORMED"} | radius: ${cameraState.radius.toFixed(1)} | yaw: ${cameraState.yaw.toFixed(2)}\n` +
-        `open: ${handState.open} | fist: ${handState.fist} | pinch: ${handState.pinch.toFixed(2)} | yawVel: ${orbitInput.yawVel.toFixed(2)}\n` +
-        `hover: ${handState.hoverIndex} | detail: ${handState.detailMode} | selected: ${handState.selectedIndex}`;
+        `hand: ${handState.hasHand} | mode: ${mode === MODE.CHAOS ? "CHAOS" : "FORMED"} | mix: ${mix.toFixed(2)}\n` +
+        `radius: ${cameraState.radius.toFixed(1)} | yaw: ${cameraState.yaw.toFixed(2)} | yawVel: ${orbitInput.yawVel.toFixed(2)}\n` +
+        `open: ${handState.open} | fist: ${handState.fist} | pinch: ${handState.pinch.toFixed(2)}\n` +
+        `hover: ${handState.hoverIndex} | detail: ${handState.detailMode} | selected: ${handState.selectedIndex}\n` +
+        `freezeSpin: ${zoomingSingle}`;
 
       renderer.render(scene, camera);
     }
 
     /*************************************************************
-     * 12) resize
+     * 13) resize
      *************************************************************/
     window.addEventListener("resize", () => {
       renderer.setSize(innerWidth, innerHeight);
@@ -1071,7 +1202,7 @@
     });
 
     /*************************************************************
-     * 13) init
+     * 14) init
      *************************************************************/
     cameraState.radius = 20;
     cameraState.targetRadius = 20;
@@ -1079,10 +1210,11 @@
     cameraState.targetYaw = 0;
     applyCamera(0.016);
 
-    loadPolaroids();
-    animate();
+    statusEl.textContent = "加载 assets 照片中…";
+    await loadPolaroidsAuto();
 
     statusEl.textContent = "已加载场景（点击开始体验开启摄像头）";
+    animate();
   </script>
 </body>
 </html>
