@@ -4,10 +4,7 @@
   <meta charset="UTF-8" />
   <title>Grand Luxury Interactive Christmas Tree (R3F Single HTML)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- Tailwind：仅 UI -->
   <script src="https://cdn.tailwindcss.com"></script>
-
   <style>
     html, body, #root { margin:0; width:100%; height:100%; background:#05080f; overflow:hidden; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
@@ -16,7 +13,6 @@
 <body>
 <div id="root"></div>
 
-<!-- MediaPipe Hands -->
 <script src="https://unpkg.com/@mediapipe/hands/hands.js"></script>
 
 <script type="module">
@@ -27,36 +23,25 @@ import { Environment } from "https://esm.sh/@react-three/drei";
 import { EffectComposer, Bloom } from "https://esm.sh/@react-three/postprocessing";
 import * as THREE from "https://esm.sh/three";
 
-/* =========================================================
-   0) 小工具：平滑/夹取/迟滞
-========================================================= */
+/* ---------- utils ---------- */
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const lerp = (a,b,t) => a + (b-a)*t;
-// 指数平滑（更丝滑，帧率无关）
 const damp = (current, target, lambda, dt) => lerp(current, target, 1 - Math.exp(-lambda * dt));
-// 迟滞开关：防抖（上阈值开，下阈值关）
 const hysteresis = (value, onTh, offTh, currentBool) => {
   if (!currentBool && value > onTh) return true;
   if (currentBool && value < offTh) return false;
   return currentBool;
 };
 
-/* =========================================================
-   1) 项目设定：状态机 + 配色
-========================================================= */
 const MODE = { FORMED: 0, CHAOS: 1 };
 const COLORS = {
   bg: "#05080f",
   emerald: new THREE.Color("#0a3a2c"),
   gold: new THREE.Color("#ffd27d"),
   white: new THREE.Color("#ffffff"),
-  mint: new THREE.Color("#b8fff0"),
 };
 
-/* =========================================================
-   2) 资源：自动读取 GitHub Pages 的 assets/ 图片
-   - 原理：GitHub API 列目录 -> ./assets/xxx 加载纹理
-========================================================= */
+/* ---------- GitHub assets listing ---------- */
 function inferGithubRepo() {
   const host = location.hostname;
   const owner = host.endsWith(".github.io") ? host.replace(".github.io","") : "probiozzp";
@@ -64,7 +49,6 @@ function inferGithubRepo() {
   const repo = seg.length ? seg[0] : "christmas-tree";
   return { owner, repo };
 }
-
 async function listAssetsImages() {
   const { owner, repo } = inferGithubRepo();
   const api = `https://api.github.com/repos/${owner}/${repo}/contents/assets`;
@@ -78,30 +62,29 @@ async function listAssetsImages() {
 }
 
 /* =========================================================
-   3) 针叶系统：THREE.Points + ShaderMaterial（奢华绿金 + 金粉闪烁）
+   Foliage: Points + Shader
 ========================================================= */
 function Foliage({ mixRef }) {
   const COUNT = 8500;
-  const H = 6.5, R = 3.3;
+  const H = 6.5, R = 3.4;
 
   const geom = useMemo(() => {
     const g = new THREE.BufferGeometry();
-    const pos = new Float32Array(COUNT * 3);
-    const target = new Float32Array(COUNT * 3);
-    const chaos = new Float32Array(COUNT * 3);
+    const pos = new Float32Array(COUNT*3);
+    const target = new Float32Array(COUNT*3);
+    const chaos = new Float32Array(COUNT*3);
     const seed = new Float32Array(COUNT);
     const spark = new Float32Array(COUNT);
 
     for (let i=0;i<COUNT;i++){
-      // target：圆锥
       const y = Math.random() * H;
       const radius = (1 - y/H) * R;
       const a = Math.random() * Math.PI*2;
       target.set([Math.cos(a)*radius, y, Math.sin(a)*radius], i*3);
 
-      // chaos：球空间
-      const rr = 9 + Math.random()*12;
-      chaos.set([(Math.random()-0.5)*rr, (Math.random()-0.5)*rr*0.7 + 2.5, (Math.random()-0.5)*rr], i*3);
+      // CHAOS 更“夸张”：更大球空间
+      const rr = 12 + Math.random()*18;
+      chaos.set([(Math.random()-0.5)*rr, (Math.random()-0.5)*rr*0.7 + 2.0, (Math.random()-0.5)*rr], i*3);
 
       pos.set([0,0,0], i*3);
       seed[i] = Math.random();
@@ -142,24 +125,19 @@ function Foliage({ mixRef }) {
         vec3 p = mix(aTarget, aChaos, uMix);
 
         float n = hash(aSeed*17.0);
-        // 更自然的浮动（多频）
         p.y += sin(uTime*1.2 + aSeed*6.2831) * 0.03 * (0.25 + 0.75*n);
         p.x += sin(uTime*0.9 + aSeed*3.0) * 0.012;
         p.z += cos(uTime*0.9 + aSeed*3.0) * 0.012;
-        p.x += sin(uTime*2.1 + aSeed*12.0) * 0.004;
-        p.z += cos(uTime*2.1 + aSeed*12.0) * 0.004;
 
-        // 顶部更亮
-        vGlow = smoothstep(2.0, 6.8, p.y);
+        vGlow = smoothstep(1.8, 6.8, p.y);
 
-        // 金粉闪烁
         float tw = sin(uTime*3.2 + aSpark*40.0) * 0.5 + 0.5;
         vSpark = smoothstep(0.86, 1.0, tw) * (0.25 + 0.75*vGlow);
 
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
 
-        float size = mix(7.0, 16.0, vGlow);
+        float size = mix(7.0, 17.0, vGlow);
         size += vSpark * 7.0;
         size *= (0.85 + n*0.4);
         gl_PointSize = size * (1.0 / -mv.z);
@@ -182,7 +160,7 @@ function Foliage({ mixRef }) {
         float d = length(uv);
 
         float core = smoothstep(0.28, 0.0, d);
-        float halo = smoothstep(0.60, 0.15, d);
+        float halo = smoothstep(0.62, 0.15, d);
 
         vec3 base = mix(uEmerald, uGold, vGlow*0.95);
         vec3 sparkCol = mix(uGold, uWhite, 0.65);
@@ -206,117 +184,16 @@ function Foliage({ mixRef }) {
 }
 
 /* =========================================================
-   4) 装饰系统：InstancedMesh（重/轻/极轻的推力权重）
-   - 礼物盒（重） -> 回归更慢，惯性大
-   - 彩球（轻）   -> 回归更快
-   - 点缀灯（极轻）-> 回归最快 + 闪烁
-========================================================= */
-function Ornaments({ mixRef }) {
-  const giftRef = useRef();
-  const ballRef = useRef();
-  const lightRef = useRef();
-
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-
-  const H = 6.5, R = 3.3;
-
-  const makeTargetOnTree = () => {
-    const y = Math.random() * (H*0.92) + 0.2;
-    const r = (1 - y/H) * R + 0.4;
-    const a = Math.random() * Math.PI*2;
-    return new THREE.Vector3(Math.cos(a)*r, y, Math.sin(a)*r);
-  };
-  const makeChaos = () => new THREE.Vector3((Math.random()-0.5)*16, (Math.random()-0.5)*12 + 2, (Math.random()-0.5)*16);
-
-  const data = useMemo(() => {
-    const mk = (count, weightMin, weightMax) =>
-      new Array(count).fill(0).map(()=>({
-        target: makeTargetOnTree(),
-        chaos: makeChaos(),
-        seed: Math.random(),
-        w: weightMin + Math.random()*(weightMax-weightMin)
-      }));
-    return {
-      gifts: mk(55, 0.35, 0.55),  // 重
-      balls: mk(80, 0.65, 0.85),  // 轻
-      lights: mk(120, 0.85, 1.0), // 极轻
-    };
-  }, []);
-
-  useFrame((_, dt) => {
-    const mix = mixRef.current;
-
-    // 礼物盒：回归慢一点（看起来更“重”）
-    data.gifts.forEach((d,i)=>{
-      dummy.position.lerpVectors(d.target, d.chaos, mix);
-      dummy.rotation.y = d.seed * Math.PI*2;
-      dummy.scale.setScalar(0.18 * d.w);
-      dummy.updateMatrix();
-      giftRef.current.setMatrixAt(i, dummy.matrix);
-    });
-    giftRef.current.instanceMatrix.needsUpdate = true;
-
-    // 彩球：轻一点
-    data.balls.forEach((d,i)=>{
-      const p = new THREE.Vector3().lerpVectors(d.target, d.chaos, mix);
-      // 轻微漂浮
-      p.y += Math.sin(performance.now()*0.001*1.6 + d.seed*12) * 0.05;
-      dummy.position.copy(p);
-      dummy.scale.setScalar(0.14 * d.w);
-      dummy.updateMatrix();
-      ballRef.current.setMatrixAt(i, dummy.matrix);
-    });
-    ballRef.current.instanceMatrix.needsUpdate = true;
-
-    // 点缀灯：极轻 + 闪烁
-    data.lights.forEach((d,i)=>{
-      const p = new THREE.Vector3().lerpVectors(d.target, d.chaos, mix);
-      p.y += Math.sin(performance.now()*0.001*2.2 + d.seed*20) * 0.07;
-      dummy.position.copy(p);
-      const tw = (Math.sin(performance.now()*0.001*4.0 + d.seed*30)*0.5+0.5);
-      dummy.scale.setScalar((0.08 + tw*0.06) * d.w);
-      dummy.updateMatrix();
-      lightRef.current.setMatrixAt(i, dummy.matrix);
-    });
-    lightRef.current.instanceMatrix.needsUpdate = true;
-  });
-
-  return (
-    <>
-      {/* 礼物盒：金边盒子（更奢华） */}
-      <instancedMesh ref={giftRef} args={[null, null, data.gifts.length]}>
-        <boxGeometry args={[1,1,1]} />
-        <meshStandardMaterial color="#0b5038" metalness={0.6} roughness={0.35} emissive="#1a6b50" emissiveIntensity={0.12}/>
-      </instancedMesh>
-
-      {/* 彩球：高光金 */}
-      <instancedMesh ref={ballRef} args={[null, null, data.balls.length]}>
-        <sphereGeometry args={[1, 22, 22]} />
-        <meshStandardMaterial color="#ffd27d" metalness={0.75} roughness={0.22} emissive="#ffd27d" emissiveIntensity={0.15}/>
-      </instancedMesh>
-
-      {/* 点缀灯：白金发光 */}
-      <instancedMesh ref={lightRef} args={[null, null, data.lights.length]}>
-        <sphereGeometry args={[1, 16, 16]} />
-        <meshBasicMaterial color="#ffffff" />
-      </instancedMesh>
-    </>
-  );
-}
-
-/* =========================================================
-   5) 奢华体积光（2）：金色 god-rays + 光柱
-   - 纯 Three：多层 additive sprite/plane 堆叠（不用额外库）
+   Volumetric Gold: fake god rays
 ========================================================= */
 function makeRadialTexture() {
   const c = document.createElement("canvas");
   c.width = 256; c.height = 256;
   const ctx = c.getContext("2d");
-  ctx.clearRect(0,0,256,256);
   const g = ctx.createRadialGradient(128,128,0,128,128,128);
-  g.addColorStop(0.0, "rgba(255,210,125,0.35)");
-  g.addColorStop(0.25,"rgba(255,210,125,0.18)");
-  g.addColorStop(0.55,"rgba(255,210,125,0.06)");
+  g.addColorStop(0.0, "rgba(255,210,125,0.40)");
+  g.addColorStop(0.25,"rgba(255,210,125,0.22)");
+  g.addColorStop(0.55,"rgba(255,210,125,0.08)");
   g.addColorStop(1.0, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0,0,256,256);
@@ -324,29 +201,25 @@ function makeRadialTexture() {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
-
 function VolumetricGold() {
   const tex = useMemo(makeRadialTexture, []);
   const group = useRef();
 
   useFrame((_, dt) => {
-    if (!group.current) return;
     const t = performance.now()*0.001;
-
-    // 轻微呼吸 + 旋转（更“电影”）
-    group.current.rotation.y = Math.sin(t*0.12) * 0.15;
+    if (!group.current) return;
+    group.current.rotation.y = Math.sin(t*0.12) * 0.18;
     group.current.children.forEach((s, i) => {
-      s.material.opacity = 0.18 + (Math.sin(t*1.1 + i*0.7)*0.5+0.5)*0.12;
+      s.material.opacity = 0.20 + (Math.sin(t*1.1 + i*0.7)*0.5+0.5)*0.14;
     });
   });
 
   return (
     <group ref={group} position={[0, 3.8, -2]}>
-      {/* 多层辉光面片堆叠：伪体积 */}
-      {new Array(7).fill(0).map((_,i)=>(
+      {new Array(8).fill(0).map((_,i)=>(
         <sprite key={i}
-          scale={[18 - i*1.6, 10 - i*0.9, 1]}
-          position={[0, 2.6 - i*0.18, -i*0.7]}
+          scale={[20 - i*1.7, 11 - i*1.0, 1]}
+          position={[0, 2.8 - i*0.18, -i*0.7]}
         >
           <spriteMaterial
             map={tex}
@@ -354,7 +227,7 @@ function VolumetricGold() {
             depthWrite={false}
             blending={THREE.AdditiveBlending}
             color={"#ffd27d"}
-            opacity={0.22}
+            opacity={0.25}
           />
         </sprite>
       ))}
@@ -363,84 +236,7 @@ function VolumetricGold() {
 }
 
 /* =========================================================
-   6) 星顶 starburst（2）：在 CHAOS 时更明显的金色爆裂光点
-========================================================= */
-function StarBurst({ mixRef }) {
-  const COUNT = 600;
-  const geom = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    const pos = new Float32Array(COUNT*3);
-    const dir = new Float32Array(COUNT*3);
-    const seed = new Float32Array(COUNT);
-    for (let i=0;i<COUNT;i++){
-      pos.set([0,0,0], i*3);
-      const v = new THREE.Vector3(
-        (Math.random()-0.5),
-        (Math.random()-0.5)*0.6 + 0.7,
-        (Math.random()-0.5)
-      ).normalize().multiplyScalar(1 + Math.random()*3);
-      dir.set([v.x, v.y, v.z], i*3);
-      seed[i] = Math.random();
-    }
-    g.setAttribute("position", new THREE.BufferAttribute(pos,3));
-    g.setAttribute("aDir", new THREE.BufferAttribute(dir,3));
-    g.setAttribute("aSeed", new THREE.BufferAttribute(seed,1));
-    return g;
-  }, []);
-
-  const mat = useMemo(()=>new THREE.ShaderMaterial({
-    uniforms: {
-      uTime:{value:0},
-      uMix:{value:0}
-    },
-    vertexShader: `
-      attribute vec3 aDir;
-      attribute float aSeed;
-      uniform float uTime;
-      uniform float uMix;
-      varying float vA;
-      void main(){
-        float t = uTime*0.8 + aSeed*10.0;
-        float burst = smoothstep(0.0, 1.0, uMix); // chaos 时更强
-        float r = (0.3 + sin(t)*0.05) + burst * (1.2 + sin(t*1.8)*0.2);
-        vec3 p = aDir * r;
-        p.y += 7.2;
-        vec4 mv = modelViewMatrix * vec4(p,1.0);
-        gl_Position = projectionMatrix * mv;
-        float tw = sin(uTime*4.0 + aSeed*30.0)*0.5+0.5;
-        vA = (0.05 + tw*0.25) * burst;
-        gl_PointSize = (3.0 + tw*5.0) * (1.0 / -mv.z) * 120.0;
-      }
-    `,
-    fragmentShader: `
-      precision highp float;
-      varying float vA;
-      void main(){
-        vec2 uv = gl_PointCoord - 0.5;
-        float d = length(uv);
-        float a = smoothstep(0.5,0.0,d) * vA;
-        gl_FragColor = vec4(1.0, 0.86, 0.55, a);
-      }
-    `,
-    transparent:true,
-    depthWrite:false,
-    blending:THREE.AdditiveBlending
-  }),[]);
-
-  useFrame((_,dt)=>{
-    mat.uniforms.uTime.value += dt;
-    mat.uniforms.uMix.value = mixRef.current;
-  });
-
-  return <points geometry={geom} material={mat} />;
-}
-
-/* =========================================================
-   7) 拍立得照片装饰（1）：自动读取 assets 并挂在树上
-   - Dual-Position：target(树) / chaos(散)
-   - 手指 hover：raycast (index tip NDC)
-   - pinch：只缩放 hover 的那张
-   - pinch>300ms：详情模式（居中，其他淡）
+   Polaroids
 ========================================================= */
 function makeRoundedAlphaTexture(radiusPx=28){
   const c = document.createElement("canvas");
@@ -459,10 +255,8 @@ function makeRoundedAlphaTexture(radiusPx=28){
   ctx.fillStyle="rgba(255,255,255,1)";
   rr(18,18,220,220,radiusPx);
   ctx.fill();
-  const tex = new THREE.CanvasTexture(c);
-  return tex;
+  return new THREE.CanvasTexture(c);
 }
-
 function makePaperNoiseTex(){
   const c = document.createElement("canvas");
   c.width = 128; c.height = 128;
@@ -479,53 +273,35 @@ function makePaperNoiseTex(){
   return tex;
 }
 
-function Polaroids({
-  mixRef,
-  indexNDCRef,
-  pinchRef,
-  detailRef,
-  onHoverChange
-}) {
+function Polaroids({ mixRef, indexNDCRef, pinchRef, detailRef, hoverIndexRef, setHoverUI }) {
   const group = useRef();
-  const { camera, raycaster, scene } = useThree();
+  const { camera } = useThree();
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
 
-  const [cards, setCards] = useState([]); // {tex, target, chaos, seed, name}
+  const [cards, setCards] = useState([]);
   const loader = useMemo(() => new THREE.TextureLoader(), []);
   const roundAlpha = useMemo(() => makeRoundedAlphaTexture(28), []);
   const paperNoise = useMemo(() => makePaperNoiseTex(), []);
 
-  // 加载 assets 图片
   useEffect(() => {
     let alive = true;
-
     (async ()=>{
-      let names = [];
-      try { names = await listAssetsImages(); } catch(e){ names = []; }
+      const names = await listAssetsImages().catch(()=>[]);
       if (!alive) return;
 
-      // 如果没读到（例如 API 限流/离线），你也可以在这里塞一个 fallback 列表
-      // names = names.length ? names : ["1.jpg","2.jpg"]; // 可选
-
-      const H = 6.5, R = 3.3;
+      const H = 6.5, R = 3.4;
       const makeTarget = () => {
         const y = Math.random() * (H*0.82) + 0.8;
-        const r = (1 - y/H) * R + 0.9;
+        const r = (1 - y/H) * R + 1.0;
         const a = Math.random() * Math.PI*2;
         return new THREE.Vector3(Math.cos(a)*r, y, Math.sin(a)*r);
       };
-      const makeChaos = () => new THREE.Vector3((Math.random()-0.5)*16, (Math.random()-0.5)*10 + 2.5, (Math.random()-0.5)*16);
+      const makeChaos = () => new THREE.Vector3((Math.random()-0.5)*18, (Math.random()-0.5)*12 + 2.5, (Math.random()-0.5)*18);
 
-      // 逐个加载纹理
       const tasks = names.map(name => new Promise((resolve)=>{
         loader.load(`./assets/${encodeURIComponent(name)}`, (tex)=>{
           tex.colorSpace = THREE.SRGBColorSpace;
-          resolve({
-            name,
-            tex,
-            target: makeTarget(),
-            chaos: makeChaos(),
-            seed: Math.random()
-          });
+          resolve({ name, tex, target: makeTarget(), chaos: makeChaos(), seed: Math.random() });
         }, undefined, ()=>resolve(null));
       }));
 
@@ -533,37 +309,30 @@ function Polaroids({
       if (!alive) return;
       setCards(result);
     })();
-
     return ()=>{ alive=false; };
   }, []);
 
-  const hoveredIndexRef = useRef(-1);
-
   useFrame((_, dt) => {
-    if (!group.current) return;
+    if (!group.current || !cards.length) return;
 
-    // 1) hover：用 index tip NDC 做 raycast
+    // hover
     const ndc = indexNDCRef.current;
     let hoverIdx = -1;
-
-    if (ndc && cards.length) {
+    if (ndc) {
       raycaster.setFromCamera(ndc, camera);
-      const intersects = raycaster.intersectObjects(group.current.children, true);
-      if (intersects.length) {
-        // 我们把每张卡的 root group 上打 userData.index
-        const obj = intersects[0].object;
-        let p = obj;
+      const hits = raycaster.intersectObjects(group.current.children, true);
+      if (hits.length) {
+        let p = hits[0].object;
         while (p && p.parent && p.parent !== group.current) p = p.parent;
         hoverIdx = p?.userData?.index ?? -1;
       }
     }
-
-    if (hoveredIndexRef.current !== hoverIdx) {
-      hoveredIndexRef.current = hoverIdx;
-      onHoverChange?.(hoverIdx);
+    if (hoverIndexRef.current !== hoverIdx) {
+      hoverIndexRef.current = hoverIdx;
+      setHoverUI(hoverIdx); // 只更新 UI，不再影响 hands effect
     }
 
-    // 2) 更新每张拍立得：Dual-position lerp + 摆动 + pinch scale + detail fade
+    // update transforms
     const mix = mixRef.current;
     const pinch = pinchRef.current;
     const detail = detailRef.current;
@@ -573,18 +342,14 @@ function Polaroids({
       const d = cards[i];
       if (!d) return;
 
-      // base position
       const p = new THREE.Vector3().lerpVectors(d.target, d.chaos, mix);
-
-      // 挂着的摆动（更真实）
       const t = performance.now()*0.001;
       const sway = Math.sin(t*0.9 + d.seed*10) * 0.10;
       const tilt = Math.cos(t*0.7 + d.seed*10) * 0.07;
 
-      const isHover = (i === hoveredIndexRef.current);
+      const isHover = (i === hoverIndexRef.current);
 
       if (detail && isHover) {
-        // 详情模式：居中靠前
         root.position.lerp(new THREE.Vector3(0, 3.9, 6.1), 0.10);
         root.rotation.x = damp(root.rotation.x, 0, 10, dt);
         root.rotation.y = damp(root.rotation.y, 0, 10, dt);
@@ -597,164 +362,143 @@ function Polaroids({
         root.rotation.y += sway*0.03;
       }
 
-      // pinch：只放大 hover 的
-      const targetS = isHover ? (1 + pinch*1.7) : 1.0;
+      // pinch：更明显（放大更大，阈值更低也能看到）
+      const targetS = isHover ? (1 + pinch*2.2) : 1.0;
       root.scale.lerp(new THREE.Vector3(targetS, targetS, targetS), 0.18);
 
-      // 详情模式淡出其他
       const opacity = (detail && !isHover) ? 0.18 : 1.0;
-
-      // 我们把材质引用放在 userData 里
       const { frameMat, photoMat, bottomMat, glossMat } = root.userData;
       if (frameMat) frameMat.opacity = damp(frameMat.opacity, opacity, 10, dt);
       if (photoMat) photoMat.opacity = damp(photoMat.opacity, opacity, 10, dt);
       if (bottomMat) bottomMat.opacity = damp(bottomMat.opacity, opacity, 10, dt);
 
-      // 反光条带（hover 更明显）
       if (glossMat) {
         const gl = (Math.sin(t*1.7 + d.seed*10)*0.5+0.5);
-        const go = (isHover ? 0.22 : 0.08) * gl;
+        const go = (isHover ? 0.26 : 0.08) * gl;
         glossMat.opacity = damp(glossMat.opacity, go, 10, dt);
       }
     });
   });
 
-  // 每张拍立得：白相纸 + 照片 + 底部留白 + 反光 + 夹子 + 挂绳 + hitProxy
-  const renderCard = (d, i) => {
-    const cardW=1.12, cardH=1.38, photoW=0.96, photoH=0.80, bottomH=0.30;
-
-    const frameMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#ffffff"),
-      roughness: 0.42,
-      metalness: 0.05,
-      roughnessMap: paperNoise,
-      alphaMap: roundAlpha,
-      transparent: true,
-      opacity: 1
-    });
-
-    const photoMat = new THREE.MeshStandardMaterial({
-      map: d.tex,
-      roughness: 0.25,
-      metalness: 0.05,
-      transparent: true,
-      opacity: 1
-    });
-
-    const bottomMat = new THREE.MeshStandardMaterial({
-      color: "#f5f5f5",
-      roughness: 0.75,
-      metalness: 0.0,
-      roughnessMap: paperNoise,
-      transparent: true,
-      opacity: 1
-    });
-
-    const glossMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-
-    return (
-      <group
-        key={d.name}
-        userData={{ index: i, frameMat, photoMat, bottomMat, glossMat }}
-        position={[d.target.x, d.target.y, d.target.z]}
-        onPointerOver={()=>{}}
-      >
-        {/* frame */}
-        <mesh material={frameMat}>
-          <planeGeometry args={[cardW, cardH]} />
-        </mesh>
-        {/* photo */}
-        <mesh material={photoMat} position={[0, 0.17, 0.002]}>
-          <planeGeometry args={[photoW, photoH]} />
-        </mesh>
-        {/* bottom */}
-        <mesh material={bottomMat} position={[0, -0.44, 0.002]}>
-          <planeGeometry args={[photoW, bottomH]} />
-        </mesh>
-        {/* gloss */}
-        <mesh material={glossMat} position={[0, 0, 0.003]}>
-          <planeGeometry args={[cardW, cardH]} />
-        </mesh>
-        {/* clip */}
-        <mesh position={[0, cardH*0.52, 0.01]}>
-          <boxGeometry args={[0.14, 0.11, 0.04]} />
-          <meshStandardMaterial color={"#ffd27d"} metalness={0.75} roughness={0.2} />
-        </mesh>
-        {/* string */}
-        <mesh position={[0, cardH*0.52 + 0.35, 0.0]}>
-          <cylinderGeometry args={[0.008, 0.008, 0.7, 10]} />
-          <meshBasicMaterial color={"#ffffff"} transparent opacity={0.45}/>
-        </mesh>
-        {/* hit proxy（为了 hover 更容易命中） */}
-        <mesh position={[0,0,0.004]}>
-          <planeGeometry args={[1.25, 1.5]} />
-          <meshBasicMaterial transparent opacity={0}/>
-        </mesh>
-      </group>
-    );
-  };
-
   if (!cards.length) return null;
-  return <group ref={group}>{cards.map(renderCard)}</group>;
+
+  return (
+    <group ref={group}>
+      {cards.map((d, i) => {
+        const frameMat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color("#ffffff"),
+          roughness: 0.42,
+          metalness: 0.05,
+          roughnessMap: paperNoise,
+          alphaMap: roundAlpha,
+          transparent: true,
+          opacity: 1
+        });
+        const photoMat = new THREE.MeshStandardMaterial({
+          map: d.tex,
+          roughness: 0.25,
+          metalness: 0.05,
+          transparent: true,
+          opacity: 1
+        });
+        const bottomMat = new THREE.MeshStandardMaterial({
+          color: "#f5f5f5",
+          roughness: 0.75,
+          metalness: 0.0,
+          roughnessMap: paperNoise,
+          transparent: true,
+          opacity: 1
+        });
+        const glossMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+
+        const cardW=1.12, cardH=1.38, photoW=0.96, photoH=0.80, bottomH=0.30;
+
+        return (
+          <group
+            key={d.name}
+            userData={{ index: i, frameMat, photoMat, bottomMat, glossMat }}
+            position={[d.target.x, d.target.y, d.target.z]}
+          >
+            <mesh material={frameMat}>
+              <planeGeometry args={[cardW, cardH]} />
+            </mesh>
+            <mesh material={photoMat} position={[0, 0.17, 0.002]}>
+              <planeGeometry args={[photoW, photoH]} />
+            </mesh>
+            <mesh material={bottomMat} position={[0, -0.44, 0.002]}>
+              <planeGeometry args={[photoW, bottomH]} />
+            </mesh>
+            <mesh material={glossMat} position={[0, 0, 0.003]}>
+              <planeGeometry args={[cardW, cardH]} />
+            </mesh>
+            <mesh position={[0, cardH*0.52, 0.01]}>
+              <boxGeometry args={[0.14, 0.11, 0.04]} />
+              <meshStandardMaterial color={"#ffd27d"} metalness={0.75} roughness={0.2} />
+            </mesh>
+            <mesh position={[0, cardH*0.52 + 0.35, 0.0]}>
+              <cylinderGeometry args={[0.008, 0.008, 0.7, 10]} />
+              <meshBasicMaterial color={"#ffffff"} transparent opacity={0.45}/>
+            </mesh>
+            <mesh position={[0,0,0.004]}>
+              <planeGeometry args={[1.25, 1.5]} />
+              <meshBasicMaterial transparent opacity={0}/>
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
 }
 
 /* =========================================================
-   8) 主场景：状态机+双坐标 lerp 在 useFrame 中推进
+   Scene: 用 group 旋转实现“手左右滑动”——不会被 lookAt 覆盖
 ========================================================= */
-function Scene({
-  modeRef,            // 当前状态（FORMED/CHAOS）
-  handYawRef,         // 手左右控制视角
-  indexNDCRef, pinchRef, detailRef,
-  setHoverIndex
-}) {
+function Scene({ modeRef, handYawRef, indexNDCRef, pinchRef, detailRef, hoverIndexRef, setHoverUI }) {
   const mixRef = useRef(0);
+  const treeGroup = useRef();
+  const { camera } = useThree();
 
-  // 更“高级”的摄像机轻呼吸 + 手控制 yaw（丝滑）
-  const { camera, scene } = useThree();
   useFrame((_, dt) => {
+    // mix（CHAOS<->FORMED）
     const targetMix = (modeRef.current === MODE.CHAOS) ? 1 : 0;
     mixRef.current = damp(mixRef.current, targetMix, 2.6, dt);
 
+    // tree 旋转（手左右控制）
+    if (treeGroup.current) {
+      treeGroup.current.rotation.y = damp(treeGroup.current.rotation.y, handYawRef.current, 6.0, dt);
+      treeGroup.current.rotation.y += 0.002; // 慢慢自转更“展示”
+    }
+
+    // 相机仅做轻呼吸 + 固定看向中心（不再用 rotation.y）
     const t = performance.now()*0.001;
     const baseY = 4 + Math.sin(t*0.6)*0.15;
     camera.position.x = damp(camera.position.x, 0, 2.0, dt);
     camera.position.y = damp(camera.position.y, baseY, 2.0, dt);
     camera.position.z = damp(camera.position.z, 20, 2.0, dt);
-
-    // yaw：更丝滑
-    camera.rotation.y = damp(camera.rotation.y, handYawRef.current, 4.5, dt);
     camera.lookAt(0, 4, 0);
   });
 
   return (
     <>
-      {/* 奢华体积金光 */}
       <VolumetricGold />
-
-      {/* 树主体 group：慢慢自转（展示更奢华） */}
-      <group rotation-y={0.0}>
+      <group ref={treeGroup}>
         <Foliage mixRef={mixRef}/>
-        <Ornaments mixRef={mixRef}/>
-        <StarBurst mixRef={mixRef}/>
         <Polaroids
           mixRef={mixRef}
           indexNDCRef={indexNDCRef}
           pinchRef={pinchRef}
           detailRef={detailRef}
-          onHoverChange={(idx)=>setHoverIndex(idx)}
+          hoverIndexRef={hoverIndexRef}
+          setHoverUI={setHoverUI}
         />
       </group>
-
-      {/* HDRI：Lobby */}
       <Environment preset="lobby" />
-
-      {/* 后期 Bloom：金色辉光 */}
       <EffectComposer>
         <Bloom intensity={1.25} threshold={0.80} mipmapBlur />
       </EffectComposer>
@@ -763,37 +507,34 @@ function Scene({
 }
 
 /* =========================================================
-   9) 手势模块：MediaPipe Hands（更顺手的判定+平滑）
-   - 张开手 -> CHAOS
-   - 握拳   -> FORMED
-   - 手左右 -> 旋转视角
-   - 捏合   -> 缩放 hover 拍立得
-   - 捏合>300ms -> 详情模式
+   App: Hands（关键修复：effect 不再依赖 hoverIndex）
 ========================================================= */
 function App() {
   const [started, setStarted] = useState(false);
-  const [status, setStatus] = useState("未启动（树已展示，点击开始体验启用摄像头）");
-  const [hoverIndex, setHoverIndex] = useState(-1);
+  const [status, setStatus] = useState("未启动（点击开始体验开启摄像头）");
 
-  // UI 面板视频（可视化）
+  const [hoverUI, setHoverUI] = useState(-1);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // 手势结果（Ref：避免频繁 setState 抖动）
   const modeRef = useRef(MODE.FORMED);
-  const modeOpenRef = useRef(false); // 用 hysteresis 做开掌状态
+  const openRef = useRef(false);
   const handYawRef = useRef(0);
 
   const indexNDCRef = useRef(null);
   const pinchRef = useRef(0);
   const detailRef = useRef(false);
 
-  // 平滑缓存
+  const hoverIndexRef = useRef(-1);
+
   const smoothHandX = useRef(0);
   const smoothPinch = useRef(0);
-
-  // detail 计时
   const pinchHoldStart = useRef(0);
+
+  // debug
+  const openScoreRef = useRef(0);
+  const handXRef = useRef(0);
 
   useEffect(() => {
     if (!started) return;
@@ -801,6 +542,7 @@ function App() {
     let stream = null;
     let hands = null;
     let rafId = null;
+    let inFlight = false;
 
     const video = videoRef.current;
     const overlay = canvasRef.current;
@@ -825,28 +567,11 @@ function App() {
       const h = overlay.clientHeight;
       ctx.clearRect(0,0,w,h);
       if (!lm) return;
-
       ctx.fillStyle = "rgba(255,210,125,0.95)";
       for (const p of lm){
         ctx.beginPath();
         ctx.arc(p.x*w, p.y*h, 4, 0, Math.PI*2);
         ctx.fill();
-      }
-      ctx.strokeStyle = "rgba(255,255,255,0.55)";
-      ctx.lineWidth = 2;
-      const edges = [
-        [0,1],[1,2],[2,3],[3,4],
-        [0,5],[5,6],[6,7],[7,8],
-        [0,9],[9,10],[10,11],[11,12],
-        [0,13],[13,14],[14,15],[15,16],
-        [0,17],[17,18],[18,19],[19,20]
-      ];
-      for (const [a,b] of edges){
-        const A = lm[a], B = lm[b];
-        ctx.beginPath();
-        ctx.moveTo(A.x*w, A.y*h);
-        ctx.lineTo(B.x*w, B.y*h);
-        ctx.stroke();
       }
     };
 
@@ -855,21 +580,22 @@ function App() {
       const indexTip = lm[8];
       const palm = lm[0];
 
-      // pinch：thumb-index 距离 -> 0..1
       const d = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
       const PINCH_MIN = 0.02, PINCH_MAX = 0.12;
       let pinch = (PINCH_MAX - d) / (PINCH_MAX - PINCH_MIN);
       pinch = clamp01(pinch);
 
-      // handX：用 indexTip 横向
-      const handX = (indexTip.x - 0.5) * 2; // [-1,1]
+      // ✅ 轴修正：镜像方向统一（让左右更直觉）
+      // 如果你觉得方向反了，只要把这里的负号删掉即可
+      const handX = -((indexTip.x - 0.5) * 2);
 
-      // open/fist：用四指尖到掌心的距离和（更稳）
       const tips = [lm[8], lm[12], lm[16], lm[20]];
       const openScore = tips.reduce((acc, p) => acc + Math.hypot(p.x - palm.x, p.y - palm.y), 0);
 
       return { pinch, handX, openScore, indexTip };
     };
+
+    let lastSeen = performance.now();
 
     (async () => {
       try {
@@ -890,14 +616,10 @@ function App() {
           selfieMode: true
         });
 
-        let lastSeen = performance.now();
-
         hands.onResults((r) => {
           const lm = r?.multiHandLandmarks?.[0];
           if (!lm) {
             drawLandmarks(null);
-
-            // 超时无手 -> 回到 FORMED
             if (performance.now() - lastSeen > 1200) {
               modeRef.current = MODE.FORMED;
               handYawRef.current = 0;
@@ -913,28 +635,32 @@ function App() {
           drawLandmarks(lm);
 
           const g = compute(lm);
+          openScoreRef.current = g.openScore;
 
-          // 更丝滑：EMA 平滑
+          // 平滑
           const alpha = 0.18;
           smoothHandX.current = smoothHandX.current + (g.handX - smoothHandX.current) * alpha;
           smoothPinch.current = smoothPinch.current + (g.pinch - smoothPinch.current) * alpha;
 
-          // yaw：限制范围 + 平滑
-          handYawRef.current = THREE.MathUtils.clamp(smoothHandX.current * 0.55, -0.95, 0.95);
+          handXRef.current = smoothHandX.current;
+
+          // yaw
+          handYawRef.current = THREE.MathUtils.clamp(smoothHandX.current * 0.75, -1.2, 1.2);
 
           // pinch
           pinchRef.current = smoothPinch.current;
 
-          // index tip NDC -> raycast 光标
-          indexNDCRef.current = { x: g.indexTip.x*2 - 1, y: -(g.indexTip.y*2 - 1) };
+          // ✅ hover 光标也做镜像修正（跟 handX 同一套方向）
+          const ndcX = - (g.indexTip.x*2 - 1);
+          const ndcY = - (g.indexTip.y*2 - 1);
+          indexNDCRef.current = { x: ndcX, y: ndcY };
 
-          // 开掌/握拳：迟滞阈值（不抖）
-          // openScore 大：更张开；小：更握
-          modeOpenRef.current = hysteresis(g.openScore, 0.60, 0.44, modeOpenRef.current);
-          modeRef.current = modeOpenRef.current ? MODE.CHAOS : MODE.FORMED;
+          // 状态机：迟滞（更稳）
+          openRef.current = hysteresis(g.openScore, 0.62, 0.48, openRef.current);
+          modeRef.current = openRef.current ? MODE.CHAOS : MODE.FORMED;
 
-          // detail：pinch>0.82 且有 hover 才允许
-          const canDetail = (pinchRef.current > 0.82) && (hoverIndex >= 0);
+          // detail：阈值调低（更容易触发）
+          const canDetail = (pinchRef.current > 0.70) && (hoverIndexRef.current >= 0);
           if (canDetail) {
             if (!pinchHoldStart.current) pinchHoldStart.current = performance.now();
             if (performance.now() - pinchHoldStart.current > 300) detailRef.current = true;
@@ -944,27 +670,25 @@ function App() {
           }
         });
 
-        // pump：持续喂帧
-        const pump = async () => {
+        // pump：避免 await 堆积
+        const pump = () => {
           if (!hands || !video) return;
-          if (video.readyState >= 2) {
-            try { await hands.send({ image: video }); } catch(e) {}
+          if (video.readyState >= 2 && !inFlight) {
+            inFlight = true;
+            hands.send({ image: video }).catch(()=>{}).finally(()=>{ inFlight = false; });
           }
           rafId = requestAnimationFrame(pump);
         };
         rafId = requestAnimationFrame(pump);
 
-        setStatus("摄像头已开启 ✅ 手势可用（开掌散开 / 握拳聚合 / 捏合放大拍立得）");
+        setStatus("摄像头已开启 ✅（开掌散 / 握拳聚 / 捏合放大拍立得 / 左右旋转树）");
       } catch(e) {
-        setStatus("摄像头启动失败 ❌");
         console.error(e);
+        setStatus("摄像头启动失败 ❌");
         alert(
           "摄像头无法启动。\n\n" +
-          "常见原因：\n" +
-          "1) 网站摄像头权限被你设为阻止（Chrome 不会再弹窗）\n" +
-          "2) 系统设置里没允许浏览器摄像头\n" +
-          "3) 摄像头被其他应用占用\n\n" +
-          "解决：地址栏左侧小锁 -> Camera 允许 -> 刷新"
+          "解决：地址栏小锁 -> Camera 允许 -> 刷新（?v=数字）\n" +
+          "或检查系统隐私设置。"
         );
       }
     })();
@@ -974,45 +698,35 @@ function App() {
       if (hands && hands.close) hands.close();
       if (stream) stream.getTracks().forEach(t => t.stop());
     };
-  }, [started, hoverIndex]);
+  }, [started]); // ✅ 关键：不再依赖 hover 变化
 
   return (
     <div className="w-full h-full relative">
       {/* UI */}
       <div className="absolute left-3 top-3 z-20 text-white bg-black/30 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl px-4 py-3 max-w-[760px]">
-        <div className="font-semibold">Grand Luxury Interactive Christmas Tree（R3F 单文件·全强化）</div>
+        <div className="font-semibold">Grand Luxury Interactive Christmas Tree（单文件·修复交互版）</div>
         <div className="text-xs opacity-85 mt-1">
-          深祖母绿 + 高光金 + 电影辉光（Bloom） + 金色体积光 + 星爆 + 拍立得照片装饰（assets 自动读取）
+          assets 自动读取拍立得；手势：开掌=CHAOS，握拳=FORMED，左右=旋转树，捏合=放大 hover 拍立得
         </div>
-        <div className="flex gap-2 mt-3 flex-wrap">
+        <div className="flex gap-2 mt-3 flex-wrap items-center">
           <button
             className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-sm"
             onClick={() => setStarted(true)}
             disabled={started}
-            title="开始体验会请求摄像头权限"
           >
             ▶ 开始体验（开启摄像头）
           </button>
-          <div className="text-xs opacity-80 flex items-center">
-            状态：{status}
-          </div>
+          <div className="text-xs opacity-80">状态：{status}</div>
         </div>
 
-        <div className="text-xs opacity-80 mt-2 whitespace-pre-line">
-{`手势：
-✋ 张开手掌：CHAOS（unleash）
-✊ 握拳：FORMED（回归圣诞树）
-👉 手左右移动：旋转视角
-🤏 捏合：放大当前指向的拍立得
-🤏 捏合>300ms：详情模式（居中显示，其它淡出）`}
-        </div>
-
-        <div className="text-xs opacity-75 mt-2">
-          hoverIndex：{hoverIndex} ｜ detail：{String(detailRef.current)} ｜ pinch：{pinchRef.current.toFixed(2)}
+        <div className="text-xs opacity-80 mt-2">
+          hoverIndex：{hoverUI} ｜ detail：{String(detailRef.current)} ｜ pinch：{pinchRef.current.toFixed(2)}
+          <br/>
+          openScore：{openScoreRef.current.toFixed(2)} ｜ handX：{handXRef.current.toFixed(2)} ｜ mode：{modeRef.current===MODE.CHAOS ? "CHAOS" : "FORMED"}
         </div>
       </div>
 
-      {/* 视频面板：让你确认真的在识别 */}
+      {/* 视频面板 */}
       <div className="absolute right-3 top-3 z-20 w-[360px] rounded-2xl overflow-hidden bg-black/30 backdrop-blur-xl border border-white/10 shadow-2xl">
         <div className="flex justify-between items-center px-3 py-2 text-white/85 text-xs border-b border-white/10">
           <div>Hand Preview</div>
@@ -1023,8 +737,8 @@ function App() {
           <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"></canvas>
         </div>
         <div className="px-3 py-2 text-white/70 text-[11px] border-t border-white/10 whitespace-pre-line">
-          {`把手伸进画面：你会看到关键点
-如果没有点：检查权限（地址栏小锁）或换 ?v=3 强制刷新`}
+          {`如果这里看不到点：说明没识别到手（或权限被禁）
+地址栏小锁 -> Camera Allow -> 用 ?v=3 强制刷新`}
         </div>
       </div>
 
@@ -1037,11 +751,12 @@ function App() {
           scene.fog = new THREE.Fog(COLORS.bg, 10, 46);
         }}
       >
-        {/* 奢华灯光：金色主光 + 冷色轮廓 */}
         <ambientLight intensity={0.16} />
         <directionalLight position={[7, 12, 8]} intensity={2.35} color={"#ffd27d"} />
         <directionalLight position={[-10, 10, -12]} intensity={0.5} color={"#9bdcff"} />
         <pointLight position={[0, 4, 10]} intensity={0.25} color={"#4cffc0"} />
+
+        <VolumetricGold />
 
         <Scene
           modeRef={modeRef}
@@ -1049,8 +764,14 @@ function App() {
           indexNDCRef={indexNDCRef}
           pinchRef={pinchRef}
           detailRef={detailRef}
-          setHoverIndex={setHoverIndex}
+          hoverIndexRef={hoverIndexRef}
+          setHoverUI={setHoverUI}
         />
+
+        <Environment preset="lobby" />
+        <EffectComposer>
+          <Bloom intensity={1.25} threshold={0.80} mipmapBlur />
+        </EffectComposer>
       </Canvas>
     </div>
   );
